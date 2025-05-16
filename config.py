@@ -29,7 +29,7 @@ PLATFORM_NAMES: Dict[str, str] = {
 MAIN_HEADER_ASPECT_RATIO_GROUP_PRIMARY = "Aspect Ratio"
 MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY = "Format"
 MAIN_HEADER_LANGUAGES_GROUP = "Languages"  # Original name, kept for broader compatibility if needed
-LANGUAGES_HEADER = "Languages"            # Consistent name for config access, similar to FORMAT_HEADER etc.
+LANGUAGE_HEADER = "Languages"            # Corrected name to match streamlit_app.py usage
 TOTAL_HEADER = "TOTAL" # Renamed from MAIN_HEADER_TOTAL_COL
 PLATFORM_COLUMN_HEADER = "PLATFORM" # Header name in the first column to identify platform sections
 FUNNEL_STAGE_HEADER = "Funnel Stage" # Header name for the funnel stage column
@@ -41,7 +41,7 @@ CORE_MAIN_HEADERS = [
     FUNNEL_STAGE_HEADER,
     FORMAT_HEADER,
     DURATION_HEADER,
-    LANGUAGES_HEADER,
+    LANGUAGE_HEADER, # Using the corrected LANGUAGE_HEADER
     TOTAL_HEADER
 ]
 
