@@ -18,7 +18,7 @@ st.set_page_config(
 # --- Display Header Image (Immediately after page config) ---
 # Load and resize image to 70% of original width, then center using columns
 header_img = Image.open("header.png")
-new_width = int(header_img.width * 0.7)  # 30% smaller
+new_width = int(header_img.width * 0.6)  # 40% smaller
 col_left, col_center, col_right = st.columns([1, 4, 1])
 with col_center:
     st.image(header_img, width=new_width)
