@@ -3,8 +3,17 @@ import os
 import datetime
 import logging
 import re
-import tkinter as tk
-from tkinter import filedialog, messagebox
+
+# Tkinter is optional (GUI-only). Gracefully degrade if not available (e.g., on Streamlit Cloud)
+try:
+    import tkinter as tk
+    from tkinter import filedialog, messagebox
+    _TK_AVAILABLE = True
+except Exception:  # ImportError or _tkinter errors
+    tk = None
+    filedialog = None
+    messagebox = None
+    _TK_AVAILABLE = False
 
 # --- Configuration ---
 INPUT_SHEET_NAME = 'Tracker (Dual Lang)'
@@ -46,18 +55,24 @@ def setup_logging():
     logging.getLogger().addHandler(console_handler)
 
 def select_excel_file():
-    """Opens a dialog for the user to select an Excel file."""
-    root = tk.Tk()
-    root.withdraw()  # Hide the main tkinter window
-    root.attributes('-topmost', True) # Make sure dialog comes to front
-    file_path = filedialog.askopenfilename(
-        parent=root, # Explicitly set parent
-        title="Select the Excel file to process",
-        filetypes=(("Excel files", "*.xlsx *.xls"), ("All files", "*.*"))
-    )
-    root.attributes('-topmost', False) # Reset topmost attribute
-    root.destroy()
-    return file_path
+    """Opens a dialog for the user to select an Excel file.
+    Falls back to console prompt if Tkinter GUI is unavailable."""
+    if _TK_AVAILABLE:
+        root = tk.Tk()
+        root.withdraw()  # Hide main window
+        root.attributes('-topmost', True)
+        file_path = filedialog.askopenfilename(
+            parent=root,
+            title="Select the Excel file to process",
+            filetypes=(("Excel files", "*.xlsx *.xls"), ("All files", "*.*"))
+        )
+        root.attributes('-topmost', False)
+        root.destroy()
+        return file_path
+    else:
+        # Headless mode: ask via stdin or environment
+        print("Tkinter is not available in this environment. Please enter the full path to the Excel file:")
+        return input().strip() or None
 
 def safe_to_numeric(value, context_row_idx, context_col_name):
     """Attempts to convert value to numeric, handling potential errors and non-numeric strings."""
@@ -307,12 +322,13 @@ def main():
     if not input_excel_file:
         logging.info("User cancelled file selection. Exiting script.")
         # Show messagebox on top
-        temp_root = tk.Tk()
-        temp_root.withdraw()
-        temp_root.attributes('-topmost', True)
-        messagebox.showinfo("Cancelled", "No file selected. Exiting script.", parent=temp_root)
-        temp_root.attributes('-topmost', False)
-        temp_root.destroy()
+        if _TK_AVAILABLE:
+            temp_root = tk.Tk()
+            temp_root.withdraw()
+            temp_root.attributes('-topmost', True)
+            messagebox.showinfo("Cancelled", "No file selected. Exiting script.", parent=temp_root)
+            temp_root.attributes('-topmost', False)
+            temp_root.destroy()
         return
 
     logging.info(f"Starting Excel transformation for file: {os.path.basename(input_excel_file)}, sheet: {INPUT_SHEET_NAME}")
@@ -321,21 +337,23 @@ def main():
         df_full_sheet = pd.read_excel(input_excel_file, sheet_name=INPUT_SHEET_NAME, header=None)
     except FileNotFoundError:
         logging.error(f"Error: The file '{input_excel_file}' was not found.")
-        temp_root = tk.Tk()
-        temp_root.withdraw()
-        temp_root.attributes('-topmost', True)
-        messagebox.showerror("Error", f"File Not Found: '{os.path.basename(input_excel_file)}'", parent=temp_root)
-        temp_root.attributes('-topmost', False)
-        temp_root.destroy()
+        if _TK_AVAILABLE:
+            temp_root = tk.Tk()
+            temp_root.withdraw()
+            temp_root.attributes('-topmost', True)
+            messagebox.showerror("Error", f"File Not Found: '{os.path.basename(input_excel_file)}'", parent=temp_root)
+            temp_root.attributes('-topmost', False)
+            temp_root.destroy()
         return
     except Exception as e:
         logging.error(f"Error reading Excel file '{input_excel_file}': {e}")
-        temp_root = tk.Tk()
-        temp_root.withdraw()
-        temp_root.attributes('-topmost', True)
-        messagebox.showerror("Error", f"Error reading Excel file '{os.path.basename(input_excel_file)}':\n{e}", parent=temp_root)
-        temp_root.attributes('-topmost', False)
-        temp_root.destroy()
+        if _TK_AVAILABLE:
+            temp_root = tk.Tk()
+            temp_root.withdraw()
+            temp_root.attributes('-topmost', True)
+            messagebox.showerror("Error", f"Error reading Excel file '{os.path.basename(input_excel_file)}':\n{e}", parent=temp_root)
+            temp_root.attributes('-topmost', False)
+            temp_root.destroy()
         return
 
     transformed_data = find_platform_tables_and_transform(df_full_sheet)
@@ -353,28 +371,31 @@ def main():
             output_df.to_excel(output_filename, index=False)
             logging.info(f"Successfully transformed data written to {output_filename}")
             logging.info(f"Total unique creative combinations generated: {len(output_df)}")
-            temp_root = tk.Tk()
-            temp_root.withdraw()
-            temp_root.attributes('-topmost', True)
-            messagebox.showinfo("Success", f"Successfully transformed data written to:\n{output_filename}", parent=temp_root)
-            temp_root.attributes('-topmost', False)
-            temp_root.destroy()
+            if _TK_AVAILABLE:
+                temp_root = tk.Tk()
+                temp_root.withdraw()
+                temp_root.attributes('-topmost', True)
+                messagebox.showinfo("Success", f"Successfully transformed data written to:\n{output_filename}", parent=temp_root)
+                temp_root.attributes('-topmost', False)
+                temp_root.destroy()
         except Exception as e:
             logging.error(f"Error writing output file '{output_filename}': {e}")
+            if _TK_AVAILABLE:
+                temp_root = tk.Tk()
+                temp_root.withdraw()
+                temp_root.attributes('-topmost', True)
+                messagebox.showerror("Error", f"Error writing output file '{output_filename}':\n{e}", parent=temp_root)
+                temp_root.attributes('-topmost', False)
+                temp_root.destroy()
+    else:
+        logging.info("No data was transformed. Output file not created.")
+        if _TK_AVAILABLE:
             temp_root = tk.Tk()
             temp_root.withdraw()
             temp_root.attributes('-topmost', True)
-            messagebox.showerror("Error", f"Error writing output file '{output_filename}':\n{e}", parent=temp_root)
+            messagebox.showwarning("No Data", "No data was transformed. Output file will not be generated.", parent=temp_root)
             temp_root.attributes('-topmost', False)
             temp_root.destroy()
-    else:
-        logging.info("No data was transformed. Output file not created.")
-        temp_root = tk.Tk()
-        temp_root.withdraw()
-        temp_root.attributes('-topmost', True)
-        messagebox.showwarning("No Data", "No data was transformed. Output file will not be generated.", parent=temp_root)
-        temp_root.attributes('-topmost', False)
-        temp_root.destroy()
 
     logging.info("Transformation script finished.")
 
