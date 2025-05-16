@@ -403,7 +403,7 @@ def run_streamlit_app():
 
         if df_transformed_display is not None and not df_transformed_display.empty:
             st.subheader("Transformed Data Overview")
-            st.write(f"Total unique creative combinations generated: {len(df_transformed_display.drop_duplicates())}")
+            st.write(f"Total unique creative combinations generated: {len(df_transformed_display)}")
             st.dataframe(df_transformed_display.head(20)) 
 
             output_excel = BytesIO()
