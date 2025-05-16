@@ -31,12 +31,15 @@ MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY = "Format"
 MAIN_HEADER_LANGUAGES_GROUP = "Languages"
 MAIN_HEADER_TOTAL_COL = "TOTAL"
 PLATFORM_COLUMN_HEADER = "PLATFORM" # Header name in the first column to identify platform sections
+FUNNEL_STAGE_HEADER = "Funnel Stage" # Header name for the funnel stage column
+FORMAT_HEADER = "Format"             # Header name for the format column
+DURATION_HEADER = "Duration"           # Header name for the duration column
 
 # Core headers expected in the main header row for validation
 CORE_MAIN_HEADERS = [
-    "Funnel Stage",
-    "Format",
-    "Duration",
+    FUNNEL_STAGE_HEADER,
+    FORMAT_HEADER,
+    DURATION_HEADER,
     MAIN_HEADER_LANGUAGES_GROUP,
     MAIN_HEADER_TOTAL_COL
 ]
