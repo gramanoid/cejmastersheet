@@ -30,6 +30,7 @@ MAIN_HEADER_ASPECT_RATIO_GROUP_PRIMARY = "Aspect Ratio"
 MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY = "Format"
 MAIN_HEADER_LANGUAGES_GROUP = "Languages"
 MAIN_HEADER_TOTAL_COL = "TOTAL"
+PLATFORM_COLUMN_HEADER = "PLATFORM" # Header name in the first column to identify platform sections
 
 # Core headers expected in the main header row for validation
 CORE_MAIN_HEADERS = [
