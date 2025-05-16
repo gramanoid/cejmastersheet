@@ -407,7 +407,7 @@ def run_streamlit_app():
             st.dataframe(df_transformed_display.head(20)) 
 
             output_excel = BytesIO()
-            with pd.ExcelWriter(output_excel, engine='xlsxwriter') as writer:
+            with pd.ExcelWriter(output_excel, engine='openpyxl') as writer:
                 df_transformed_display.to_excel(writer, index=False, sheet_name='All_Platforms_Combined')
             output_excel.seek(0)
             st.download_button(
@@ -425,7 +425,7 @@ def run_streamlit_app():
                     with st.expander(f"View and Download Data for {platform_name}"):
                         st.dataframe(df_platform.head(10))
                         platform_excel = BytesIO()
-                        with pd.ExcelWriter(platform_excel, engine='xlsxwriter') as writer:
+                        with pd.ExcelWriter(platform_excel, engine='openpyxl') as writer:
                             df_platform.to_excel(writer, index=False, sheet_name=platform_name)
                         platform_excel.seek(0)
                         st.download_button(
