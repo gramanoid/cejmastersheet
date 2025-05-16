@@ -160,7 +160,13 @@ def find_platform_tables_and_transform(df_full_sheet, logger, error_collector):
     ar_group_header_secondary = config.MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY
     language_header = config.LANGUAGE_HEADER 
 
-    platform_header_indices = df_full_sheet[df_full_sheet.iloc[:, 0].astype(str).str.strip().str.fullmatch(platform_column_header, case=False, na=False)].index
+    # Identify rows where the first column contains the PLATFORM marker (case-insensitive)
+    platform_header_indices = df_full_sheet[
+        df_full_sheet.iloc[:, 0]
+            .astype(str)
+            .str.strip()
+            .str.contains(platform_column_header, case=False, na=False)
+    ].index
     logger.info(f"Found {len(platform_header_indices)} potential platform blocks based on '{platform_column_header}'.")
 
     for platform_block_start_index in platform_header_indices:
