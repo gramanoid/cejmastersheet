@@ -28,8 +28,9 @@ PLATFORM_NAMES: Dict[str, str] = {
 # Excel parsing constants
 MAIN_HEADER_ASPECT_RATIO_GROUP_PRIMARY = "Aspect Ratio"
 MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY = "Format"
-MAIN_HEADER_LANGUAGES_GROUP = "Languages"
-MAIN_HEADER_TOTAL_COL = "TOTAL"
+MAIN_HEADER_LANGUAGES_GROUP = "Languages"  # Original name, kept for broader compatibility if needed
+LANGUAGES_HEADER = "Languages"            # Consistent name for config access, similar to FORMAT_HEADER etc.
+TOTAL_HEADER = "TOTAL" # Renamed from MAIN_HEADER_TOTAL_COL
 PLATFORM_COLUMN_HEADER = "PLATFORM" # Header name in the first column to identify platform sections
 FUNNEL_STAGE_HEADER = "Funnel Stage" # Header name for the funnel stage column
 FORMAT_HEADER = "Format"             # Header name for the format column
@@ -40,8 +41,8 @@ CORE_MAIN_HEADERS = [
     FUNNEL_STAGE_HEADER,
     FORMAT_HEADER,
     DURATION_HEADER,
-    MAIN_HEADER_LANGUAGES_GROUP,
-    MAIN_HEADER_TOTAL_COL
+    LANGUAGES_HEADER,
+    TOTAL_HEADER
 ]
 
 # Row offsets (0-indexed)
