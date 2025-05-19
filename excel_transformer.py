@@ -3,9 +3,6 @@ import os
 import datetime
 import logging
 import re
-import sys # Keep for __main__ if needed for other things, or remove if only for old logging
-import traceback # Keep for error logging
-from typing import List, Dict, Tuple, Optional, Any
 
 # Import from config
 from config import (
@@ -20,9 +17,6 @@ from config import (
     FUNNEL_STAGE_HEADER, FORMAT_HEADER, DURATION_HEADER # Specific header names from config
 )
 
-# Module-specific logger. All functions in this module should use this logger instance.
-logger = logging.getLogger(__name__)
-
 # Tkinter is optional (GUI-only). Gracefully degrade if not available (e.g., on Streamlit Cloud)
 try:
     import tkinter as tk
@@ -33,6 +27,30 @@ except Exception:  # ImportError or _tkinter errors
     filedialog = None
     messagebox = None
     _TK_AVAILABLE = False
+
+def setup_logging():
+    # If root logger already has handlers, assume it's configured (e.g., by Streamlit)
+    if logging.root.handlers:
+        logging.info("Root logger already has handlers. excel_transformer's setup_logging will not reconfigure.")
+        # Optionally, add a file handler if it doesn't exist, for standalone runs,
+        # but be careful not to duplicate if Streamlit adds one.
+        # For now, let's keep it simple: if handlers exist, do nothing more from here.
+        return
+
+    # Original setup for standalone execution:
+    # Remove existing handlers (should be none if the above check passes for first-time standalone)
+    for handler in logging.root.handlers[:]: # This line will now only run if no handlers were present
+        logging.root.removeHandler(handler)
+    logging.basicConfig(filename=LOG_FILE,
+                        level=LOG_LEVEL, 
+                        format=LOG_FORMAT,
+                        filemode='w') # Overwrite log file each run
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(LOG_LEVEL)
+    formatter = logging.Formatter(LOG_FORMAT)
+    console_handler.setFormatter(formatter)
+    logging.getLogger().addHandler(console_handler)
+    logging.info("excel_transformer.setup_logging: Configured for standalone run.")
 
 def select_excel_file():
     """Opens a dialog for the user to select an Excel file.
@@ -61,7 +79,7 @@ def safe_to_numeric(value, context_row_idx, context_col_name):
     try:
         return pd.to_numeric(value)
     except ValueError:
-        logger.warning(f"Row {context_row_idx+1}, Col '{context_col_name}': Could not convert '{value}' to numeric. Treating as 0.")
+        logging.warning(f"Row {context_row_idx+1}, Col '{context_col_name}': Could not convert '{value}' to numeric. Treating as 0.")
         return 0
 
 def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
@@ -93,7 +111,7 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
                     if p_name.lower() in cell_value.lower():
                         platform_name_found = p_name
                         platform_header_row_actual_idx = check_row_idx
-                        logger.info(f"Found platform '{platform_name_found}' title on sheet row {platform_header_row_actual_idx + 1}.")
+                        logging.info(f"Found platform '{platform_name_found}' title on sheet row {platform_header_row_actual_idx + 1}.")
                         break
                 if platform_name_found:
                     break
@@ -101,19 +119,19 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
                 break
         
         if not platform_name_found:
-            logger.info(f"No more platform titles found after sheet row {current_row_idx + 1}.")
+            logging.info(f"No more platform titles found after sheet row {current_row_idx + 1}.")
             break # End of platforms
 
         current_row_idx = platform_header_row_actual_idx # Move main scan index to where platform was found
 
         main_header_row_actual_idx = platform_header_row_actual_idx + MAIN_HEADER_ROW_OFFSET
         if main_header_row_actual_idx >= len(df_full_sheet):
-            logger.warning(f"Platform '{platform_name_found}': Main header row index {main_header_row_actual_idx+1} is out of bounds. Skipping platform.")
+            logging.warning(f"Platform '{platform_name_found}': Main header row index {main_header_row_actual_idx+1} is out of bounds. Skipping platform.")
             current_row_idx = platform_header_row_actual_idx + 1 # Move to next row after platform title
             continue
 
         main_header_values = df_full_sheet.iloc[main_header_row_actual_idx].str.strip().astype(str).tolist()
-        logger.debug(f"Platform '{platform_name_found}': Potential main header at row {main_header_row_actual_idx+1}: {main_header_values}")
+        logging.debug(f"Platform '{platform_name_found}': Potential main header at row {main_header_row_actual_idx+1}: {main_header_values}")
 
         # Validate core headers presence
         all_core_headers_present = all(header in main_header_values for header in core_main_headers_check)
@@ -121,11 +139,11 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
                                           MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY in main_header_values
 
         if not (all_core_headers_present and aspect_ratio_group_header_present):
-            logger.warning(f"Platform '{platform_name_found}' at row {platform_header_row_actual_idx+1}: Missing one or more critical headers. Core headers present: {all_core_headers_present}, AR group present: {aspect_ratio_group_header_present}. Headers sought: {core_main_headers_check} & AR group. Found: {main_header_values}. Skipping platform.")
+            logging.warning(f"Platform '{platform_name_found}' at row {platform_header_row_actual_idx+1}: Missing one or more critical headers. Core headers present: {all_core_headers_present}, AR group present: {aspect_ratio_group_header_present}. Headers sought: {core_main_headers_check} & AR group. Found: {main_header_values}. Skipping platform.")
             current_row_idx = platform_header_row_actual_idx + 1 # Move to next row after platform title
             continue
             
-        logger.info(f"Platform '{platform_name_found}': Successfully identified main headers at row {main_header_row_actual_idx+1}.")
+        logging.info(f"Platform '{platform_name_found}': Successfully identified main headers at row {main_header_row_actual_idx+1}.")
 
         # Identify column indices for key headers
         funnel_stage_col_idx = main_header_values.index(FUNNEL_STAGE_HEADER)
@@ -164,7 +182,7 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
                 ar_col_names.append(str(ar_sub_header_values[i]).strip())
             elif str(main_header_values[i]).strip() not in ['', 'nan'] and i > ar_group_header_col_idx: # Stop if we hit another main header
                 break 
-        logger.info(f"Platform '{platform_name_found}': Identified Aspect Ratio/Format columns: {ar_col_names} at indices {ar_cols_indices}")
+        logging.info(f"Platform '{platform_name_found}': Identified Aspect Ratio/Format columns: {ar_col_names} at indices {ar_cols_indices}")
 
         # Languages group columns (only if dual_lang is true)
         lang_group_header_col_idx = -1
@@ -182,13 +200,13 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
                         lang_col_names.append(str(ar_sub_header_values[i]).strip())
                     elif str(main_header_values[i]).strip() not in ['', 'nan'] and i > lang_group_header_col_idx:
                         break
-                logger.info(f"Platform '{platform_name_found}': Identified Language columns: {lang_col_names} at indices {lang_cols_indices}")
+                logging.info(f"Platform '{platform_name_found}': Identified Language columns: {lang_col_names} at indices {lang_cols_indices}")
             except ValueError:
-                logger.warning(f"Platform '{platform_name_found}' at row {main_header_row_actual_idx+1}: '{MAIN_HEADER_LANGUAGES_GROUP}' header not found, though is_dual_lang is True. Processing as if no language columns specified for this platform.")
+                logging.warning(f"Platform '{platform_name_found}' at row {main_header_row_actual_idx+1}: '{MAIN_HEADER_LANGUAGES_GROUP}' header not found, though is_dual_lang is True. Processing as if no language columns specified for this platform.")
                 # lang_cols_indices remains empty, lang_col_names remains empty
         
         if not ar_cols_indices:
-            logger.warning(f"Platform '{platform_name_found}': No Aspect Ratio/Format sub-columns found. Skipping platform.")
+            logging.warning(f"Platform '{platform_name_found}': No Aspect Ratio/Format sub-columns found. Skipping platform.")
             current_row_idx = platform_header_row_actual_idx + DATA_START_ROW_OFFSET # Move to next platform section or end of data
             data_row_idx = main_header_row_actual_idx + 1 
             while data_row_idx < len(df_full_sheet) and pd.isna(df_full_sheet.iloc[data_row_idx, 0]): # Iterate through data rows of current table
@@ -205,17 +223,17 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
             # Check for new platform title in the first column (approx)
             potential_next_platform_title = str(df_full_sheet.iloc[data_row_idx, 0]).strip().upper()
             if any(platform.upper() in potential_next_platform_title for platform in PLATFORM_NAMES.values()) and not pd.isna(df_full_sheet.iloc[data_row_idx, 0]):
-                logger.debug(f"Platform '{platform_name_found}': Encountered new platform title '{df_full_sheet.iloc[data_row_idx, 0]}' at row {data_row_idx+1}. Ending processing for current platform.")
+                logging.debug(f"Platform '{platform_name_found}': Encountered new platform title '{df_full_sheet.iloc[data_row_idx, 0]}' at row {data_row_idx+1}. Ending processing for current platform.")
                 break 
             
             # Check if the row is empty or Funnel Stage is empty (heuristic for end of table section)
             # Consider a row empty if the 'Funnel Stage' column is empty for that row
             if pd.isna(df_full_sheet.iloc[data_row_idx, funnel_stage_col_idx]) or str(df_full_sheet.iloc[data_row_idx, funnel_stage_col_idx]).strip() == '':
-                logger.debug(f"Platform '{platform_name_found}': Encountered empty 'Funnel Stage' at row {data_row_idx+1}. Assuming end of data for this platform.")
+                logging.debug(f"Platform '{platform_name_found}': Encountered empty 'Funnel Stage' at row {data_row_idx+1}. Assuming end of data for this platform.")
                 break
 
             data_values = df_full_sheet.iloc[data_row_idx]
-            logger.debug(f"Processing data row {data_row_idx+1}: {data_values.to_dict()}")
+            logging.debug(f"Processing data row {data_row_idx+1}: {data_values.to_dict()}")
 
             funnel_stage = str(data_values.iloc[funnel_stage_col_idx]).strip()
             format_primary = str(data_values.iloc[format_col_idx]).strip()
@@ -240,7 +258,7 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
                         count_of_selected_languages += 1
                         selected_language_names_for_row.append(lang_name)
                 if not selected_language_names_for_row: # If dual_lang, but no languages ticked for this specific row
-                    logger.debug(f"Row {data_row_idx+1} ({funnel_stage}, {format_primary}): Dual language sheet, but no languages selected for this row. Treating as 1 implicit language for combination count, but no language column will be added.")
+                    logging.debug(f"Row {data_row_idx+1} ({funnel_stage}, {format_primary}): Dual language sheet, but no languages selected for this row. Treating as 1 implicit language for combination count, but no language column will be added.")
                     count_of_selected_languages = 1 # Still counts as 1 for total calculation if row is valid
                     # selected_language_names_for_row remains empty, so no language-specific rows generated later if this path is taken.
             else: # Single language sheet or dual_lang where lang group wasn't found for platform
@@ -248,18 +266,18 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
                 # selected_language_names_for_row remains empty
 
             if sum_of_ar_format_ticks == 0:
-                logger.debug(f"Row {data_row_idx+1} ({funnel_stage}, {format_primary}): Skipping, no AR/Format items ticked for this row.")
+                logging.debug(f"Row {data_row_idx+1} ({funnel_stage}, {format_primary}): Skipping, no AR/Format items ticked for this row.")
                 data_row_idx += 1
                 continue
 
             expected_combinations = sum_of_ar_format_ticks * count_of_selected_languages
 
             if expected_combinations != total_val_from_sheet:
-                logger.warning(f"Row {data_row_idx+1} ({funnel_stage}, {format_primary}): Mismatch! Expected combinations '{expected_combinations}' (AR_sum:{sum_of_ar_format_ticks} * Lang_count:{count_of_selected_languages}) vs TOTAL in sheet '{total_val_from_sheet}'. Skipping row.")
+                logging.warning(f"Row {data_row_idx+1} ({funnel_stage}, {format_primary}): Mismatch! Expected combinations '{expected_combinations}' (AR_sum:{sum_of_ar_format_ticks} * Lang_count:{count_of_selected_languages}) vs TOTAL in sheet '{total_val_from_sheet}'. Skipping row.")
                 data_row_idx += 1
                 continue
                 
-            logger.info(f"Row {data_row_idx+1} ({funnel_stage}, {format_primary}): Counts MATCH. Expected: {expected_combinations}, Sheet Total: {total_val_from_sheet}. Generating combinations.")
+            logging.info(f"Row {data_row_idx+1} ({funnel_stage}, {format_primary}): Counts MATCH. Expected: {expected_combinations}, Sheet Total: {total_val_from_sheet}. Generating combinations.")
 
             # Generate creative combinations
             for ar_idx_tuple, ar_format_name_tuple in zip(enumerate(selected_ar_formats_for_row), selected_ar_formats_for_row):
@@ -295,18 +313,16 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
     return transformed_data_all_platforms
 
 
-def process_excel_file_for_streamlit(input_excel_file_path: str) -> Dict[str, Optional[pd.DataFrame]]:
+def process_excel_file_for_streamlit(input_excel_file_path: str) -> dict:
     """
-    Processes the given Excel file, expecting 'Tracker (Dual Lang)' and/or 'Tracker (Single Lang)' sheets.
-    Returns a dictionary with sheet names as keys and their transformed DataFrames (or None) as values.
+    Processes the given Excel file for Streamlit app usage.
+    Attempts to read and transform 'Tracker (Dual Lang)' and 'Tracker (Single Lang)' sheets.
+    Returns a dictionary of DataFrames, keyed by sheet type name.
     """
-    logger.setLevel(logging.INFO) # Explicitly set level for this specific logger instance
+    setup_logging() # Ensure logging is configured when called as a module
+    logging.info(f"Processing Excel file for Streamlit: {os.path.basename(input_excel_file_path)}")
 
-    logger.info(f"EXCEL_TRANSFORMER_UI_LOG: Starting processing for file: {input_excel_file_path} (via module logger)")
-    # logging.getLogger().info("EXCEL_TRANSFORMER_UI_LOG: Test message from root logger inside excel_transformer.") # Test root logger propagation
-
-    results = {}
-    found_any_sheet = False
+    results_by_sheet_type = {}
 
     sheets_to_process_config = [
         {
@@ -331,9 +347,9 @@ def process_excel_file_for_streamlit(input_excel_file_path: str) -> Dict[str, Op
         df_transformed = None
 
         try:
-            logger.info(f"Attempting to read sheet: '{sheet_name_to_process}'")
+            logging.info(f"Attempting to read sheet: '{sheet_name_to_process}'")
             df_sheet = pd.read_excel(input_excel_file_path, sheet_name=sheet_name_to_process, header=None)
-            logger.info(f"Successfully read sheet: '{sheet_name_to_process}'. Starting transformation.")
+            logging.info(f"Successfully read sheet: '{sheet_name_to_process}'. Starting transformation.")
             
             transformed_rows = find_platform_tables_and_transform(df_sheet, is_dual_lang=is_dual)
             
@@ -341,70 +357,109 @@ def process_excel_file_for_streamlit(input_excel_file_path: str) -> Dict[str, Op
                 df_transformed = pd.DataFrame(transformed_rows)
                 # Ensure correct column order and presence
                 df_transformed = df_transformed.reindex(columns=final_columns)
-                logger.info(f"Sheet '{sheet_name_to_process}': Transformation successful. Generated {len(df_transformed)} rows.")
+                logging.info(f"Sheet '{sheet_name_to_process}': Transformation successful. Generated {len(df_transformed)} rows.")
             else:
-                logger.info(f"Sheet '{sheet_name_to_process}': No data transformed.")
+                logging.info(f"Sheet '{sheet_name_to_process}': No data transformed.")
                 # Store an empty DataFrame with correct columns if no rows transformed but sheet existed
                 df_transformed = pd.DataFrame(columns=final_columns)
 
         except ValueError as e:
             # Typically occurs if sheet_name is not found
             if "sheet_name" in str(e).lower() and f"'{sheet_name_to_process}'" in str(e):
-                logger.warning(f"Sheet '{sheet_name_to_process}' not found in the Excel file. Skipping.")
+                logging.warning(f"Sheet '{sheet_name_to_process}' not found in the Excel file. Skipping.")
             else:
-                logger.error(f"Error processing sheet '{sheet_name_to_process}': {e}")
+                logging.error(f"Error processing sheet '{sheet_name_to_process}': {e}")
         except Exception as e:
-            logger.error(f"Unexpected error processing sheet '{sheet_name_to_process}': {e}")
+            logging.error(f"Unexpected error processing sheet '{sheet_name_to_process}': {e}")
         
-        results[output_key] = df_transformed
+        results_by_sheet_type[output_key] = df_transformed
 
-    return results
+    return results_by_sheet_type
 
+
+# Old main function is being replaced by process_excel_file_for_streamlit for module use,
+# and the __main__ block will handle standalone execution.
 
 if __name__ == "__main__":
-    # Configure basic logging for standalone execution to show messages in the console.
-    logging.basicConfig(level=logging.INFO,
-                        format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
-                        handlers=[logging.StreamHandler(sys.stdout)])
-
-    import config 
-    logger.info("EXCEL_TRANSFORMER (standalone): Script started.") # Use module logger for consistency
+    # This block executes when the script is run directly.
+    setup_logging() # Ensure logging is setup for standalone run
 
     input_file = select_excel_file()
-    if input_file:
-        # Use config.OUTPUT_FILE_BASENAME for the base name
-        output_filename = f"{config.OUTPUT_FILE_BASENAME}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        # Ensure output_path is correctly formed, e.g., save in the same directory as the input file or current dir
-        output_dir = os.path.dirname(input_file) or '.' # Use '.' for current directory if input_file has no path
-        output_path = os.path.join(output_dir, output_filename)
+    if not input_file:
+        logging.info("User cancelled file selection or no file provided. Exiting script.")
+        if _TK_AVAILABLE:
+            # Simplified Tkinter message for standalone cancellation
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes('-topmost', True)
+            messagebox.showinfo("Cancelled", "No file selected. Exiting script.", parent=root)
+            root.attributes('-topmost', False)
+            root.destroy()
+        exit()
 
-        logger.info(f"Starting standalone Excel transformation for: {input_file}")
-        processed_data_map = process_excel_file_for_streamlit(input_file)
+    logging.info(f"Starting standalone Excel transformation for file: {os.path.basename(input_file)}")
+    
+    processed_data_map = process_excel_file_for_streamlit(input_file)
+    
+    output_dfs_to_write = []
+    sheet_names_for_output = []
+
+    # Check Dual Lang results
+    df_dual = processed_data_map.get(DUAL_LANG_INPUT_SHEET_NAME)
+    if df_dual is not None and not df_dual.empty:
+        output_dfs_to_write.append(df_dual)
+        sheet_names_for_output.append(config.OUTPUT_SHEET_NAME_DUAL_LANG) # Use config for output sheet name
+        logging.info(f"'{DUAL_LANG_INPUT_SHEET_NAME}' processed: {len(df_dual)} rows.")
+    elif df_dual is not None: # Exists but empty
+        logging.info(f"'{DUAL_LANG_INPUT_SHEET_NAME}' processed, but resulted in 0 rows.")
+    else: # Not processed (e.g. sheet not found)
+        logging.info(f"'{DUAL_LANG_INPUT_SHEET_NAME}' was not processed or not found.")
+
+    # Check Single Lang results
+    df_single = processed_data_map.get(SINGLE_LANG_INPUT_SHEET_NAME)
+    if df_single is not None and not df_single.empty:
+        output_dfs_to_write.append(df_single)
+        sheet_names_for_output.append(config.OUTPUT_SHEET_NAME_SINGLE_LANG) # Use config for output sheet name
+        logging.info(f"'{SINGLE_LANG_INPUT_SHEET_NAME}' processed: {len(df_single)} rows.")
+    elif df_single is not None: # Exists but empty
+        logging.info(f"'{SINGLE_LANG_INPUT_SHEET_NAME}' processed, but resulted in 0 rows.")
+    else: # Not processed
+        logging.info(f"'{SINGLE_LANG_INPUT_SHEET_NAME}' was not processed or not found.")
+
+    if output_dfs_to_write:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Use OUTPUT_FILE_BASENAME from config
+        output_filename = f"{OUTPUT_FILE_BASENAME}_{timestamp}.xlsx"
         
-        output_dfs_to_write = {}
-        if processed_data_map.get(DUAL_LANG_INPUT_SHEET_NAME) is not None and not processed_data_map[DUAL_LANG_INPUT_SHEET_NAME].empty:
-            output_dfs_to_write[config.OUTPUT_SHEET_NAME_DUAL_LANG] = processed_data_map[DUAL_LANG_INPUT_SHEET_NAME]
-        else:
-            logger.info(f"No transformed data for sheet: {DUAL_LANG_INPUT_SHEET_NAME}")
-
-        if processed_data_map.get(SINGLE_LANG_INPUT_SHEET_NAME) is not None and not processed_data_map[SINGLE_LANG_INPUT_SHEET_NAME].empty:
-            output_dfs_to_write[config.OUTPUT_SHEET_NAME_SINGLE_LANG] = processed_data_map[SINGLE_LANG_INPUT_SHEET_NAME]
-        else:
-            logger.info(f"No transformed data for sheet: {SINGLE_LANG_INPUT_SHEET_NAME}")
-
-        if output_dfs_to_write:
-            try:
-                with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-                    for sheet_name, df_to_write in output_dfs_to_write.items():
-                        df_to_write.to_excel(writer, sheet_name=sheet_name, index=False)
-                        logger.info(f"Data written to sheet: {sheet_name} in {output_path}")
-                logger.info(f"Successfully saved transformed data to {output_path}")
-            except Exception as e:
-                logger.error(f"Error writing Excel file {output_path}: {e}")
-                logger.error(traceback.format_exc())
-        else:
-            logger.info("No dataframes to write to Excel.")
+        try:
+            with pd.ExcelWriter(output_filename, engine='openpyxl') as writer:
+                for df_out, sheet_name_out in zip(output_dfs_to_write, sheet_names_for_output):
+                    df_out.to_excel(writer, sheet_name=sheet_name_out, index=False)
+            logging.info(f"Successfully transformed data written to {output_filename} with sheets: {sheet_names_for_output}")
+            if _TK_AVAILABLE:
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
+                messagebox.showinfo("Success", f"Data written to:\n{output_filename}", parent=root)
+                root.attributes('-topmost', False)
+                root.destroy()
+        except Exception as e:
+            logging.error(f"Error writing output file '{output_filename}': {e}")
+            if _TK_AVAILABLE:
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
+                messagebox.showerror("Error", f"Error writing to '{output_filename}':\n{e}", parent=root)
+                root.attributes('-topmost', False)
+                root.destroy()
     else:
-        logger.warning("No file selected for transformation.")
+        logging.info("No data was transformed from any sheet. Output file not created.")
+        if _TK_AVAILABLE:
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes('-topmost', True)
+            messagebox.showwarning("No Data", "No data transformed. Output not generated.", parent=root)
+            root.attributes('-topmost', False)
+            root.destroy()
 
-    logger.info("Transformation script finished.")
+    logging.info("Transformation script finished.")

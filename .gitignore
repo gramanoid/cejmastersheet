@@ -28,6 +28,7 @@ build/
 
 # Project-specific or temporary files/folders to ignore
 memory-bank/
+!memory-bank/*.md
 .windsurfrules
 global_rules.md
 splash_screenv2.png

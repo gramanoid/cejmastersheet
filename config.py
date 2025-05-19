@@ -6,7 +6,7 @@ from pathlib import Path
 
 # Application constants
 APP_NAME = "Excel Transformer"
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
 # File handling
 DUAL_LANG_INPUT_SHEET_NAME = 'Tracker (Dual Lang)'
