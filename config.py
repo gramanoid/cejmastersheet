@@ -9,10 +9,15 @@ APP_NAME = "Excel Transformer"
 VERSION = "2.0.0"
 
 # File handling
-INPUT_SHEET_NAME = 'Tracker (Dual Lang)'
+DUAL_LANG_INPUT_SHEET_NAME = 'Tracker (Dual Lang)'
+SINGLE_LANG_INPUT_SHEET_NAME = 'Tracker (Single Lang)'
 OUTPUT_FILE_BASENAME = 'transformed_CEJ_master_specsheet'
 LOG_FILE = 'transformer.log'
 DEFAULT_OUTPUT_FORMAT = 'xlsx'  # Can be 'xlsx' or 'csv'
+
+# Output sheet names for the transformed data
+OUTPUT_SHEET_NAME_DUAL_LANG = 'Transformed_Dual_Lang'
+OUTPUT_SHEET_NAME_SINGLE_LANG = 'Transformed_Single_Lang'
 
 # Platform configuration
 PLATFORM_NAMES: Dict[str, str] = {
@@ -65,11 +70,11 @@ LOG_MAX_BYTES = 10 * 1024 * 1024  # 10MB
 LOG_BACKUP_COUNT = 3
 
 # Output configuration
-OUTPUT_COLUMNS = [
+OUTPUT_COLUMNS_BASE = [
     'Platform',
     'Funnel Stage',
     'Format',
     'Duration',
-    'Aspect Ratio / Format',
-    'Languages'
+    'Aspect Ratio / Format'
 ]
+OUTPUT_LANGUAGE_COLUMN = 'Languages'
