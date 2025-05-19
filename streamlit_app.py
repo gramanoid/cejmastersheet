@@ -63,7 +63,7 @@ def run_streamlit_app():
     # Removed initial call to setup_streamlit_logging to avoid duplicate handlers. Handlers are created when the user clicks the button.
     st.title("CEJ Master Spec Sheet Transformer")
 
-    st.markdown("Upload the 'Haleon CEJ Master Spec Sheet' Excel file to transform the 'Tracker (Dual Lang)' sheet.")
+    st.markdown("Upload the 'Haleon CEJ Master Spec Sheet' Excel file to transform the 'Tracker (Dual Lang)' and 'Tracker (Single Lang)' sheets.")
 
     uploaded_file = st.file_uploader("Choose an Excel file", type="xlsx")
     if uploaded_file is not None:
