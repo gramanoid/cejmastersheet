@@ -1,0 +1,49 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.spec
+*.exe
+
+# Environment variables and secrets
+.env
+.env*.local
+
+# Local development settings
+.vscode/
+.idea/
+
+# Streamlit specific ignores
+.streamlit/secrets.toml
+
+# Data files - generally should not be in the repo if user uploads
+*.xlsx
+*.xls
+*.csv
+
+# Project-specific or temporary files/folders to ignore
+memory-bank/
+!memory-bank/*.md
+.windsurfrules
+global_rules.md
+splash_screenv2.png
+transformation_plan.md
+
+# Logs and temp files
+*.log
+*.tmp
+
+# OS-specific files
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Re-include essential files if a broader pattern above excluded them
+!header.png
+!config.py 
+# Note: .streamlit/config.toml is not excluded by .streamlit/secrets.toml

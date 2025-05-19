@@ -29,19 +29,28 @@ except Exception:  # ImportError or _tkinter errors
     _TK_AVAILABLE = False
 
 def setup_logging():
-    # Remove existing handlers to prevent duplicate logs if re-run in same session
-    for handler in logging.root.handlers[:]:
+    # If root logger already has handlers, assume it's configured (e.g., by Streamlit)
+    if logging.root.handlers:
+        logging.info("Root logger already has handlers. excel_transformer's setup_logging will not reconfigure.")
+        # Optionally, add a file handler if it doesn't exist, for standalone runs,
+        # but be careful not to duplicate if Streamlit adds one.
+        # For now, let's keep it simple: if handlers exist, do nothing more from here.
+        return
+
+    # Original setup for standalone execution:
+    # Remove existing handlers (should be none if the above check passes for first-time standalone)
+    for handler in logging.root.handlers[:]: # This line will now only run if no handlers were present
         logging.root.removeHandler(handler)
     logging.basicConfig(filename=LOG_FILE,
                         level=LOG_LEVEL, 
                         format=LOG_FORMAT,
                         filemode='w') # Overwrite log file each run
-    # Add a console handler to also see logs in the console
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(LOG_LEVEL) # Console shows INFO and above
+    console_handler.setLevel(LOG_LEVEL)
     formatter = logging.Formatter(LOG_FORMAT)
     console_handler.setFormatter(formatter)
     logging.getLogger().addHandler(console_handler)
+    logging.info("excel_transformer.setup_logging: Configured for standalone run.")
 
 def select_excel_file():
     """Opens a dialog for the user to select an Excel file.

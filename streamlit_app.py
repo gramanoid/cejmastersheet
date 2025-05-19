@@ -36,68 +36,92 @@ st.markdown(
 
 # setup_streamlit_logging remains to capture logs for display in the UI
 def setup_streamlit_logging():
-    logger = logging.getLogger('streamlit_app_logger') 
-    logger.setLevel(logging.INFO)
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
+    app_logger = logging.getLogger('streamlit_app_logger') 
+    app_logger.setLevel(logging.INFO)
     
-    log_stream = StringIO()
-    stream_handler = logging.StreamHandler(log_stream)
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    stream_handler.setFormatter(formatter)
-    logger.addHandler(stream_handler)
+    log_stream_for_ui = StringIO()
+    ui_handler = logging.StreamHandler(log_stream_for_ui)
+    # Added %(name)s to formatter to see the logger's name (e.g., root, excel_transformer)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s') 
+    ui_handler.setFormatter(formatter)
     
-    # Deduplicate root logger handlers that point to a StringIO (prevents log duplication on repeated runs)
     root_logger = logging.getLogger()
     for h in root_logger.handlers[:]:
         if isinstance(h, logging.StreamHandler) and isinstance(h.stream, StringIO):
             root_logger.removeHandler(h)
-    root_logger.addHandler(stream_handler)
+            h.close()
+            
+    root_logger.addHandler(ui_handler)
     root_logger.setLevel(logging.INFO)
 
-    return log_stream, logger
+    # --- Streamlit App Diagnostics for excel_transformer logger ---
+    # These prints will go to the console where Streamlit is running:
+    # et_logger = logging.getLogger('excel_transformer') # Get the instance of the other module's logger
+    # print(f"CONSOLE_SA: excel_transformer.logger name (from SA): {et_logger.name}")
+    # print(f"CONSOLE_SA: excel_transformer.logger level (from SA): {et_logger.level} (Effective: {et_logger.getEffectiveLevel()})")
+    # print(f"CONSOLE_SA: excel_transformer.logger propagate (from SA): {et_logger.propagate}")
+    # print(f"CONSOLE_SA: excel_transformer.logger handlers (from SA): {et_logger.handlers}")
+    # print(f"CONSOLE_SA: root_logger handlers (from SA after setup): {root_logger.handlers}")
+    # --- End Diagnostics ---
+
+    return log_stream_for_ui, app_logger
 
 
 # --- Streamlit App UI ---
 def run_streamlit_app():
-    # Removed initial call to setup_streamlit_logging to avoid duplicate handlers. Handlers are created when the user clicks the button.
+    # Initial call to setup_streamlit_logging was removed to ensure it's only called on button press.
     st.title("CEJ Master Spec Sheet Transformer")
 
-    st.markdown("Upload the 'Haleon CEJ Master Spec Sheet' Excel file to transform the 'Tracker (Dual Lang)' sheet.")
+    st.markdown("Upload the 'Haleon CEJ Master Spec Sheet' Excel file to transform the 'Tracker (Dual Lang)' and 'Tracker (Single Lang)' sheets.")
 
     uploaded_file = st.file_uploader("Choose an Excel file", type="xlsx")
     if uploaded_file is not None:
         if st.button("Transform Excel Data"):
+            log_stream, logger_instance = setup_streamlit_logging()
+            
+            # Diagnostic log from streamlit_app's root logger
+            logging.info("STREAMLIT_APP: 'Transform Excel Data' button clicked. Logging configured.")
+            logger_instance.info("STREAMLIT_APP: Test message from 'streamlit_app_logger'.") # Should also propagate to root
+
             with st.spinner('Processing your Excel file... Please wait.'):
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
                     tmp_file.write(uploaded_file.getvalue())
                     tmp_file_path = tmp_file.name
                 
                 try:
+                    # excel_transformer logs to root logger, which now has our stream_handler
                     results_by_sheet_type = excel_transformer.process_excel_file_for_streamlit(tmp_file_path)
                     st.session_state['results_by_sheet_type'] = results_by_sheet_type
                     st.session_state['file_processed'] = True
                 except Exception as e:
-                    log_stream, logger_instance = setup_streamlit_logging()
+                    # Use the named logger_instance for app-specific error messages
                     logger_instance.error(f"An error occurred during processing: {e}")
                     logger_instance.error(traceback.format_exc())
                     st.error(f"An error occurred: {e}") 
-                    st.session_state['file_processed'] = False 
                 finally:
-                    os.remove(tmp_file_path) 
-
-                if 'log_stream' in locals():
+                    if os.path.exists(tmp_file_path):
+                        os.remove(tmp_file_path)
+                    
+                    # log_stream is now guaranteed to be defined here
                     log_contents = log_stream.getvalue()
                     st.session_state['log_contents'] = log_contents
                 
+                # Clean up old session state keys if they exist from previous versions
                 st.session_state.pop('df_transformed', None)
                 st.session_state.pop('platform_dfs', None)
                 st.session_state.pop('platform_counts', None)
 
     if st.session_state.get('file_processed', False):
-        st.subheader("Processing Log")
-        log_placeholder = st.empty()
-        log_placeholder.text_area("Log", st.session_state.get('log_contents', ''), height=200)
+        # Display logs if available
+        if 'log_contents' in st.session_state:
+            st.subheader("Processing Log")
+            log_text_to_display = st.session_state['log_contents']
+            if log_text_to_display is None: # Should not happen with getvalue()
+                log_text_to_display = "Log content is None. (Unexpected)"
+            elif not log_text_to_display.strip(): # Checks for empty string or only whitespace
+                log_text_to_display = "Log is empty. No messages were captured at INFO level or above."
+            # Use a new key for text_area to force re-render if necessary
+            st.text_area("Log Details", log_text_to_display, height=200, key="log_display_area_diagnostics") 
 
         results_data = st.session_state.get('results_by_sheet_type')
         any_data_processed = False
@@ -135,19 +159,21 @@ def run_streamlit_app():
                             df_platform_specific = df_current_sheet[df_current_sheet['Platform'] == platform_name]
                             count = len(df_platform_specific)
                             # Use a more robust key for expander and button to avoid conflicts
-                            expander_key = f"expander_{sheet_key}_{platform_name}".replace(" ", "_")
-                            button_key = f"button_dl_{sheet_key}_{platform_name}".replace(" ", "_")
+                            expander_key = f"expander_{sheet_key}_{platform_name.replace(' ', '_')}"
+                            button_key = f"button_dl_{sheet_key}_{platform_name.replace(' ', '_')}"
 
-                            with st.expander(f"{platform_name}: {count} combinations", key=expander_key):
+                            platform_name_display = platform_name.upper()
+
+                            with st.expander(f"{platform_name_display}: {count} combinations"):
                                 st.dataframe(df_platform_specific.head(10))
                                 platform_excel_bytes = BytesIO()
                                 with pd.ExcelWriter(platform_excel_bytes, engine='openpyxl') as writer_platform:
                                     df_platform_specific.to_excel(writer_platform, index=False, sheet_name=platform_name[:30]) # Excel sheet names <= 31 chars
                                 platform_excel_bytes.seek(0)
                                 st.download_button(
-                                    label=f"Download {platform_name} Data (Excel)",
+                                    label=f"Download {platform_name_display} Data (Excel)",
                                     data=platform_excel_bytes,
-                                    file_name=f"{platform_name}_transformed_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                    file_name=f"{platform_name}_{sheet_key.replace(' ', '_').lower()}_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                     key=button_key
                                 )
