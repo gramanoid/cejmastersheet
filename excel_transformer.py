@@ -3,61 +3,65 @@ import os
 import datetime
 import logging
 import re
-import tkinter as tk
-from tkinter import filedialog, messagebox
 
-# --- Configuration ---
-INPUT_SHEET_NAME = 'Tracker (Dual Lang)'
-OUTPUT_FILE_BASENAME = 'transformed_CEJ_master_specsheet'
-LOG_FILE = 'transformer.log'
+# Import from config
+from config import (
+    DUAL_LANG_INPUT_SHEET_NAME, SINGLE_LANG_INPUT_SHEET_NAME,
+    OUTPUT_FILE_BASENAME, LOG_FILE, PLATFORM_NAMES,
+    MAIN_HEADER_ASPECT_RATIO_GROUP_PRIMARY, MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY,
+    MAIN_HEADER_LANGUAGES_GROUP, MAIN_HEADER_TOTAL_COL,
+    START_ROW_SEARCH_FOR_PLATFORM, PLATFORM_TITLE_ROW_OFFSET,
+    MAIN_HEADER_ROW_OFFSET, SUB_HEADER_ROW_OFFSET, DATA_START_ROW_OFFSET,
+    LOG_LEVEL, LOG_FORMAT, LOG_MAX_BYTES, LOG_BACKUP_COUNT, # Assuming these are used by setup_logging
+    OUTPUT_COLUMNS_BASE, OUTPUT_LANGUAGE_COLUMN, # For output structure
+    FUNNEL_STAGE_HEADER, FORMAT_HEADER, DURATION_HEADER # Specific header names from config
+)
 
-# Platform names to search for (case-insensitive)
-PLATFORM_NAMES = ["YOUTUBE", "META", "TIKTOK", "PROGRAMMATIC", "AUDIO", "GAMING", "AMAZON"]
-
-# Expected main headers (for locating and verifying header rows)
-# Order matters for finding column groups
-MAIN_HEADER_ASPECT_RATIO_GROUP_PRIMARY = "Aspect Ratio"
-MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY = "Format" # Used if primary isn't found, for platforms like Programmatic
-MAIN_HEADER_LANGUAGES_GROUP = "Languages"
-MAIN_HEADER_TOTAL_COL = "TOTAL"
-# All core headers expected in the main header row for validation
-CORE_MAIN_HEADERS = ["Funnel Stage", "Format", "Duration", MAIN_HEADER_LANGUAGES_GROUP, MAIN_HEADER_TOTAL_COL]
-# Note: Aspect Ratio/Secondary Format group header is checked separately due to its variability
-
-START_ROW_SEARCH_FOR_PLATFORM = 7 # 0-indexed, so Excel row 8. Search a bit around this.
-PLATFORM_TITLE_ROW_OFFSET = 0 # Relative to found platform title cell
-MAIN_HEADER_ROW_OFFSET = 2    # Relative to platform title row
-SUB_HEADER_ROW_OFFSET = 3     # Relative to platform title row
-DATA_START_ROW_OFFSET = 4     # Relative to platform title row
+# Tkinter is optional (GUI-only). Gracefully degrade if not available (e.g., on Streamlit Cloud)
+try:
+    import tkinter as tk
+    from tkinter import filedialog, messagebox
+    _TK_AVAILABLE = True
+except Exception:  # ImportError or _tkinter errors
+    tk = None
+    filedialog = None
+    messagebox = None
+    _TK_AVAILABLE = False
 
 def setup_logging():
     # Remove existing handlers to prevent duplicate logs if re-run in same session
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
     logging.basicConfig(filename=LOG_FILE,
-                        level=logging.INFO, 
-                        format='%(asctime)s - %(levelname)s - %(message)s',
+                        level=LOG_LEVEL, 
+                        format=LOG_FORMAT,
                         filemode='w') # Overwrite log file each run
     # Add a console handler to also see logs in the console
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO) # Console shows INFO and above
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    console_handler.setLevel(LOG_LEVEL) # Console shows INFO and above
+    formatter = logging.Formatter(LOG_FORMAT)
     console_handler.setFormatter(formatter)
     logging.getLogger().addHandler(console_handler)
 
 def select_excel_file():
-    """Opens a dialog for the user to select an Excel file."""
-    root = tk.Tk()
-    root.withdraw()  # Hide the main tkinter window
-    root.attributes('-topmost', True) # Make sure dialog comes to front
-    file_path = filedialog.askopenfilename(
-        parent=root, # Explicitly set parent
-        title="Select the Excel file to process",
-        filetypes=(("Excel files", "*.xlsx *.xls"), ("All files", "*.*"))
-    )
-    root.attributes('-topmost', False) # Reset topmost attribute
-    root.destroy()
-    return file_path
+    """Opens a dialog for the user to select an Excel file.
+    Falls back to console prompt if Tkinter GUI is unavailable."""
+    if _TK_AVAILABLE:
+        root = tk.Tk()
+        root.withdraw()  # Hide main window
+        root.attributes('-topmost', True)
+        file_path = filedialog.askopenfilename(
+            parent=root,
+            title="Select the Excel file to process",
+            filetypes=(("Excel files", "*.xlsx *.xls"), ("All files", "*.*"))
+        )
+        root.attributes('-topmost', False)
+        root.destroy()
+        return file_path
+    else:
+        # Headless mode: ask via stdin or environment
+        print("Tkinter is not available in this environment. Please enter the full path to the Excel file:")
+        return input().strip() or None
 
 def safe_to_numeric(value, context_row_idx, context_col_name):
     """Attempts to convert value to numeric, handling potential errors and non-numeric strings."""
@@ -69,10 +73,16 @@ def safe_to_numeric(value, context_row_idx, context_col_name):
         logging.warning(f"Row {context_row_idx+1}, Col '{context_col_name}': Could not convert '{value}' to numeric. Treating as 0.")
         return 0
 
-def find_platform_tables_and_transform(df_full_sheet):
+def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
     transformed_data_all_platforms = []
     current_row_idx = START_ROW_SEARCH_FOR_PLATFORM - 3 # Start search a bit earlier
     if current_row_idx < 0: current_row_idx = 0
+
+    # Define core main headers dynamically based on sheet type
+    core_main_headers_check = [FUNNEL_STAGE_HEADER, FORMAT_HEADER, DURATION_HEADER, MAIN_HEADER_TOTAL_COL]
+    if is_dual_lang:
+        # Insert Languages group header before TOTAL for dual language sheets
+        core_main_headers_check.insert(3, MAIN_HEADER_LANGUAGES_GROUP)
 
     while current_row_idx < len(df_full_sheet):
         platform_name_found = None
@@ -105,278 +115,342 @@ def find_platform_tables_and_transform(df_full_sheet):
 
         current_row_idx = platform_header_row_actual_idx # Move main scan index to where platform was found
 
-        main_header_sheet_idx = platform_header_row_actual_idx + MAIN_HEADER_ROW_OFFSET
-        sub_header_sheet_idx = platform_header_row_actual_idx + SUB_HEADER_ROW_OFFSET
-        data_start_sheet_idx = platform_header_row_actual_idx + DATA_START_ROW_OFFSET
-
-        if main_header_sheet_idx >= len(df_full_sheet) or sub_header_sheet_idx >= len(df_full_sheet):
-            logging.error(f"Platform '{platform_name_found}': Header rows extend beyond sheet limits. Skipping.")
-            current_row_idx += 1
+        main_header_row_actual_idx = platform_header_row_actual_idx + MAIN_HEADER_ROW_OFFSET
+        if main_header_row_actual_idx >= len(df_full_sheet):
+            logging.warning(f"Platform '{platform_name_found}': Main header row index {main_header_row_actual_idx+1} is out of bounds. Skipping platform.")
+            current_row_idx = platform_header_row_actual_idx + 1 # Move to next row after platform title
             continue
 
-        # --- Extract and Validate Main Headers ---
-        main_headers_series = df_full_sheet.iloc[main_header_sheet_idx].fillna('')
-        main_headers_list = [str(h).strip() for h in main_headers_series.tolist()]
-        logging.info(f"Platform '{platform_name_found}': Potential Main Headers on row {main_header_sheet_idx+1}: {main_headers_list}")
+        main_header_values = df_full_sheet.iloc[main_header_row_actual_idx].str.strip().astype(str).tolist()
+        logging.debug(f"Platform '{platform_name_found}': Potential main header at row {main_header_row_actual_idx+1}: {main_header_values}")
 
-        # Validate core main headers are present (excluding the variable Aspect Ratio/Format group header for now)
-        if not all(core_h in main_headers_list for core_h in CORE_MAIN_HEADERS):
-            logging.error(f"Platform '{platform_name_found}': Missing one or more core main headers (excluding Aspect Ratio/Format group) like {CORE_MAIN_HEADERS} on row {main_header_sheet_idx+1}. Headers found: {main_headers_list}. Skipping table.")
-            current_row_idx += 1
-            continue
-        
-        # --- Identify Column Indices for Main Headers ---
-        col_idx_aspect_ratio_group_start = -1
-        actual_aspect_ratio_group_header_name = ""
+        # Validate core headers presence
+        all_core_headers_present = all(header in main_header_values for header in core_main_headers_check)
+        aspect_ratio_group_header_present = MAIN_HEADER_ASPECT_RATIO_GROUP_PRIMARY in main_header_values or \
+                                          MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY in main_header_values
 
-        try:
-            col_idx_funnel = main_headers_list.index("Funnel Stage")
-            # Find the primary 'Format' column index first
-            col_idx_format_primary = main_headers_list.index("Format") 
-            col_idx_duration = main_headers_list.index("Duration")
-            
-            # Try to find 'Aspect Ratio' group header
-            if MAIN_HEADER_ASPECT_RATIO_GROUP_PRIMARY in main_headers_list:
-                col_idx_aspect_ratio_group_start = main_headers_list.index(MAIN_HEADER_ASPECT_RATIO_GROUP_PRIMARY)
-                actual_aspect_ratio_group_header_name = MAIN_HEADER_ASPECT_RATIO_GROUP_PRIMARY
-            # If 'Aspect Ratio' not found, try to find a *second* 'Format' column to act as the group header
-            elif MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY in main_headers_list:
-                # Find all occurrences of 'Format'
-                format_indices = [i for i, h in enumerate(main_headers_list) if h == MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY]
-                if len(format_indices) > 1: # We need at least two 'Format' occurrences
-                    # Assume the one that is NOT col_idx_format_primary is the group header
-                    # This assumes the group 'Format' is to the right of the primary 'Format'
-                    for fi in format_indices:
-                        if fi != col_idx_format_primary and fi > col_idx_format_primary:
-                            col_idx_aspect_ratio_group_start = fi
-                            actual_aspect_ratio_group_header_name = MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY
-                            break 
-                if col_idx_aspect_ratio_group_start == -1: # Still not found a suitable secondary 'Format'
-                    logging.error(f"Platform '{platform_name_found}': Found 'Format' but could not distinguish a secondary 'Format' to use as Aspect Ratio group header. Skipping table.")
-                    current_row_idx +=1
-                    continue
-            else:
-                logging.error(f"Platform '{platform_name_found}': Neither '{MAIN_HEADER_ASPECT_RATIO_GROUP_PRIMARY}' nor a secondary '{MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY}' group header found. Skipping table.")
-                current_row_idx += 1
-                continue
-
-            col_idx_languages_group_start = main_headers_list.index(MAIN_HEADER_LANGUAGES_GROUP)
-            col_idx_total = main_headers_list.index(MAIN_HEADER_TOTAL_COL)
-
-            # Post-check: Ensure Aspect Ratio/Format group is before Languages group, and Languages before TOTAL
-            if not (col_idx_aspect_ratio_group_start < col_idx_languages_group_start < col_idx_total):
-                logging.error(f"Platform '{platform_name_found}': Header group order incorrect ({actual_aspect_ratio_group_header_name} at {col_idx_aspect_ratio_group_start}, {MAIN_HEADER_LANGUAGES_GROUP} at {col_idx_languages_group_start}, {MAIN_HEADER_TOTAL_COL} at {col_idx_total}). Skipping table.")
-                current_row_idx += 1
-                continue
-
-        except ValueError as ve:
-            logging.error(f"Platform '{platform_name_found}': Could not find index for a core main header on row {main_header_sheet_idx+1}. Error: {ve}. Skipping table.")
-            current_row_idx += 1
-            continue
-
-        # --- Extract Sub-Headers (Aspect Ratios and Languages) ---
-        sub_headers_series = df_full_sheet.iloc[sub_header_sheet_idx].fillna('')
-        
-        aspect_ratio_cols = [] # List of {'name': str, 'idx': int}
-        # Columns from Aspect Ratio group start up to (but not including) Languages group start
-        for i in range(col_idx_aspect_ratio_group_start, col_idx_languages_group_start):
-            sub_header_name = str(sub_headers_series.iloc[i]).strip()
-            if sub_header_name: # Only add if there's a sub-header name
-                aspect_ratio_cols.append({'name': sub_header_name, 'idx': i})
-        
-        language_cols = [] # List of {'name': str, 'idx': int}
-        # Columns from Languages group start up to (but not including) TOTAL col
-        for i in range(col_idx_languages_group_start, col_idx_total):
-            sub_header_name = str(sub_headers_series.iloc[i]).strip()
-            if sub_header_name:
-                language_cols.append({'name': sub_header_name, 'idx': i})
-
-        if not aspect_ratio_cols:
-            logging.warning(f"Platform '{platform_name_found}': No aspect ratio sub-headers found under '{actual_aspect_ratio_group_header_name}'. Skipping table.")
-            current_row_idx += 1
-            continue
-        if not language_cols:
-            logging.warning(f"Platform '{platform_name_found}': No language sub-headers found under '{MAIN_HEADER_LANGUAGES_GROUP}'. Skipping table.")
-            current_row_idx += 1
+        if not (all_core_headers_present and aspect_ratio_group_header_present):
+            logging.warning(f"Platform '{platform_name_found}' at row {platform_header_row_actual_idx+1}: Missing one or more critical headers. Core headers present: {all_core_headers_present}, AR group present: {aspect_ratio_group_header_present}. Headers sought: {core_main_headers_check} & AR group. Found: {main_header_values}. Skipping platform.")
+            current_row_idx = platform_header_row_actual_idx + 1 # Move to next row after platform title
             continue
             
-        logging.info(f"Platform '{platform_name_found}': Aspect Ratio columns: {aspect_ratio_cols}")
-        logging.info(f"Platform '{platform_name_found}': Language columns: {language_cols}")
+        logging.info(f"Platform '{platform_name_found}': Successfully identified main headers at row {main_header_row_actual_idx+1}.")
 
-        platform_generated_rows_count = 0 # Counter for this specific platform
+        # Identify column indices for key headers
+        funnel_stage_col_idx = main_header_values.index(FUNNEL_STAGE_HEADER)
+        format_col_idx = main_header_values.index(FORMAT_HEADER)
+        duration_col_idx = main_header_values.index(DURATION_HEADER)
+        total_col_idx = main_header_values.index(MAIN_HEADER_TOTAL_COL)
 
-        # --- Process Data Rows for this Platform ---
-        for data_row_idx in range(data_start_sheet_idx, len(df_full_sheet)):
-            current_data_row = df_full_sheet.iloc[data_row_idx]
-            # Check for end of table (completely empty row based on key columns)
-            if current_data_row.iloc[[col_idx_funnel, col_idx_format_primary]].isnull().all():
-                logging.info(f"Platform '{platform_name_found}': Detected end of table data at sheet row {data_row_idx + 1}.")
-                current_row_idx = data_row_idx # Move scan to end of this table
-                break
-            
-            funnel_stage_val = str(current_data_row.iloc[col_idx_funnel]).strip() if pd.notna(current_data_row.iloc[col_idx_funnel]) else ""
-            format_primary_val = str(current_data_row.iloc[col_idx_format_primary]).strip() if pd.notna(current_data_row.iloc[col_idx_format_primary]) else ""
-            duration_val = str(current_data_row.iloc[col_idx_duration]).strip() if pd.notna(current_data_row.iloc[col_idx_duration]) else ""
+        # Aspect Ratio / Secondary Format group columns
+        ar_group_header_actual = ""
+        if MAIN_HEADER_ASPECT_RATIO_GROUP_PRIMARY in main_header_values:
+            ar_group_header_actual = MAIN_HEADER_ASPECT_RATIO_GROUP_PRIMARY
+        elif MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY in main_header_values: # Fallback for platforms like Programmatic
+            ar_group_header_actual = MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY
+        
+        ar_group_header_col_idx = main_header_values.index(ar_group_header_actual)
+        sub_header_row_actual_idx = platform_header_row_actual_idx + SUB_HEADER_ROW_OFFSET
+        ar_sub_header_values = df_full_sheet.iloc[sub_header_row_actual_idx].astype(str).tolist()
+        
+        ar_cols_indices = []
+        ar_col_names = []
+        # Find columns under the Aspect Ratio/Format group until the 'Languages' or 'TOTAL' header is met
+        # This logic needs to correctly identify the span of AR columns
+        next_main_header_boundary_idx = len(main_header_values) # Default to end of row
+        if MAIN_HEADER_LANGUAGES_GROUP in main_header_values:
+            next_main_header_boundary_idx = main_header_values.index(MAIN_HEADER_LANGUAGES_GROUP)
+        # If Languages isn't there (e.g. single lang sheet), TOTAL is the boundary
+        elif MAIN_HEADER_TOTAL_COL in main_header_values:
+             next_main_header_boundary_idx = main_header_values.index(MAIN_HEADER_TOTAL_COL)
 
-            ar_sum = 0
-            lang_sum = 0
-            ar_counts_for_row = []
-            lang_counts_for_row = []
+        for i in range(ar_group_header_col_idx, next_main_header_boundary_idx):
+            # Ensure sub-header is not 'nan', not empty, and the main header for this column is empty (merged cell)
+            # For AR group, main_header_values[i] should be part of the merged AR group or empty if it's not the first AR col
+            if pd.notna(ar_sub_header_values[i]) and str(ar_sub_header_values[i]).strip() not in ['', 'nan'] and \
+               (main_header_values[i] == ar_group_header_actual or str(main_header_values[i]).strip() in ['', 'nan']):
+                ar_cols_indices.append(i)
+                ar_col_names.append(str(ar_sub_header_values[i]).strip())
+            elif str(main_header_values[i]).strip() not in ['', 'nan'] and i > ar_group_header_col_idx: # Stop if we hit another main header
+                break 
+        logging.info(f"Platform '{platform_name_found}': Identified Aspect Ratio/Format columns: {ar_col_names} at indices {ar_cols_indices}")
 
-            for ar_col_info in aspect_ratio_cols:
-                ar_val = safe_to_numeric(current_data_row.iloc[ar_col_info['idx']], data_row_idx, ar_col_info['name'])
-                if ar_val > 0:
-                    ar_sum += ar_val
-                    ar_counts_for_row.append({'name': ar_col_info['name'], 'tick': ar_val})
-                logging.debug(f"  AR/Format '{ar_col_info['name']}': read '{current_data_row.iloc[ar_col_info['idx']]}' as {ar_val}")
-
-            for lang_col_info in language_cols:
-                lang_val = safe_to_numeric(current_data_row.iloc[lang_col_info['idx']], data_row_idx, lang_col_info['name'])
-                if lang_val > 0:
-                    lang_sum += lang_val
-                    lang_counts_for_row.append({'name': lang_col_info['name'], 'tick': lang_val})
-                logging.debug(f"  Language '{lang_col_info['name']}': read '{current_data_row.iloc[lang_col_info['idx']]}' as {lang_val}")
-
-            logging.debug(f"  AR/Format ticks sum for this row: {ar_sum}")
-            logging.debug(f"  Number of distinct selected languages: {len(lang_counts_for_row)}")
-            logging.debug(f"  Raw AR/Format details: {ar_counts_for_row}")
-            logging.debug(f"  Raw Language details: {lang_counts_for_row}")
-
-            # TOTAL validation (using original Excel row numbers for logging clarity)
-            excel_sheet_row_num_for_log = current_data_row.name + 1 # .name is the original DataFrame index (0-indexed)
-            total_from_sheet_raw = current_data_row.iloc[col_idx_total]
-            total_from_sheet = 0
+        # Languages group columns (only if dual_lang is true)
+        lang_group_header_col_idx = -1
+        lang_cols_indices = []
+        lang_col_names = []
+        if is_dual_lang:
             try:
-                if pd.notna(total_from_sheet_raw) and str(total_from_sheet_raw).strip() != "":
-                    total_from_sheet = int(float(str(total_from_sheet_raw)))
+                lang_group_header_col_idx = main_header_values.index(MAIN_HEADER_LANGUAGES_GROUP)
+                # Find columns under the Languages group until 'TOTAL' is met
+                total_header_boundary_idx = main_header_values.index(MAIN_HEADER_TOTAL_COL)
+                for i in range(lang_group_header_col_idx, total_header_boundary_idx):
+                    if pd.notna(ar_sub_header_values[i]) and str(ar_sub_header_values[i]).strip() not in ['', 'nan'] and \
+                       (main_header_values[i] == MAIN_HEADER_LANGUAGES_GROUP or str(main_header_values[i]).strip() in ['', 'nan']):
+                        lang_cols_indices.append(i)
+                        lang_col_names.append(str(ar_sub_header_values[i]).strip())
+                    elif str(main_header_values[i]).strip() not in ['', 'nan'] and i > lang_group_header_col_idx:
+                        break
+                logging.info(f"Platform '{platform_name_found}': Identified Language columns: {lang_col_names} at indices {lang_cols_indices}")
             except ValueError:
-                logging.warning(f"Platform '{platform_name_found}', Row {excel_sheet_row_num_for_log}: Non-numeric value '{total_from_sheet_raw}' in TOTAL column. Assuming 0 for validation.")
-            
-            logging.debug(f"  TOTAL from sheet (Excel Row {excel_sheet_row_num_for_log}): {total_from_sheet_raw} (parsed as {total_from_sheet})")
+                logging.warning(f"Platform '{platform_name_found}' at row {main_header_row_actual_idx+1}: '{MAIN_HEADER_LANGUAGES_GROUP}' header not found, though is_dual_lang is True. Processing as if no language columns specified for this platform.")
+                # lang_cols_indices remains empty, lang_col_names remains empty
+        
+        if not ar_cols_indices:
+            logging.warning(f"Platform '{platform_name_found}': No Aspect Ratio/Format sub-columns found. Skipping platform.")
+            current_row_idx = platform_header_row_actual_idx + DATA_START_ROW_OFFSET # Move to next platform section or end of data
+            data_row_idx = main_header_row_actual_idx + 1 
+            while data_row_idx < len(df_full_sheet) and pd.isna(df_full_sheet.iloc[data_row_idx, 0]): # Iterate through data rows of current table
+                data_row_idx +=1
+            current_row_idx = data_row_idx 
+            continue
 
-            # If no aspect ratios are ticked or no languages were selected for this row, it can't produce combinations
-            if not ar_counts_for_row or not lang_counts_for_row:
-                logging.debug(f"Platform '{platform_name_found}', Excel Row {excel_sheet_row_num_for_log}: Skipping. No AR/Format types ticked (count={len(ar_counts_for_row)}) OR no Languages selected (count={len(lang_counts_for_row)}).")
-                if total_from_sheet > 0:
-                    logging.warning(f"Platform '{platform_name_found}', Excel Row {excel_sheet_row_num_for_log}: TOTAL column is {total_from_sheet} but no AR/Format items or Languages found/selected. This row will be skipped.")
+        # Process data rows for this platform
+        data_start_row_for_platform = platform_header_row_actual_idx + DATA_START_ROW_OFFSET
+        data_row_idx = data_start_row_for_platform
+
+        while data_row_idx < len(df_full_sheet):
+            # Stop if we encounter another platform title or a completely empty row (signaling end of data for this platform)
+            # Check for new platform title in the first column (approx)
+            potential_next_platform_title = str(df_full_sheet.iloc[data_row_idx, 0]).strip().upper()
+            if any(platform.upper() in potential_next_platform_title for platform in PLATFORM_NAMES.values()) and not pd.isna(df_full_sheet.iloc[data_row_idx, 0]):
+                logging.debug(f"Platform '{platform_name_found}': Encountered new platform title '{df_full_sheet.iloc[data_row_idx, 0]}' at row {data_row_idx+1}. Ending processing for current platform.")
+                break 
+            
+            # Check if the row is empty or Funnel Stage is empty (heuristic for end of table section)
+            # Consider a row empty if the 'Funnel Stage' column is empty for that row
+            if pd.isna(df_full_sheet.iloc[data_row_idx, funnel_stage_col_idx]) or str(df_full_sheet.iloc[data_row_idx, funnel_stage_col_idx]).strip() == '':
+                logging.debug(f"Platform '{platform_name_found}': Encountered empty 'Funnel Stage' at row {data_row_idx+1}. Assuming end of data for this platform.")
+                break
+
+            data_values = df_full_sheet.iloc[data_row_idx]
+            logging.debug(f"Processing data row {data_row_idx+1}: {data_values.to_dict()}")
+
+            funnel_stage = str(data_values.iloc[funnel_stage_col_idx]).strip()
+            format_primary = str(data_values.iloc[format_col_idx]).strip()
+            duration = str(data_values.iloc[duration_col_idx]).strip()
+            total_val_from_sheet = safe_to_numeric(data_values.iloc[total_col_idx], data_row_idx, MAIN_HEADER_TOTAL_COL)
+
+            sum_of_ar_format_ticks = 0
+            selected_ar_formats_for_row = [] # List of tuples (col_idx, ar_format_name)
+            for ar_idx, ar_name in zip(ar_cols_indices, ar_col_names):
+                tick_value = safe_to_numeric(data_values.iloc[ar_idx], data_row_idx, ar_name)
+                if tick_value > 0:
+                    sum_of_ar_format_ticks += tick_value
+                    selected_ar_formats_for_row.append((ar_idx, ar_name))
+            
+            count_of_selected_languages = 0
+            selected_language_names_for_row = []
+            if is_dual_lang and lang_cols_indices: # Only consider languages if dual lang and lang columns were found
+                for lang_idx, lang_name in zip(lang_cols_indices, lang_col_names):
+                    # Language is selected if there's any non-empty, non-NA value (e.g., '1', 'x', 'yes')
+                    lang_cell_value = str(data_values.iloc[lang_idx]).strip()
+                    if lang_cell_value and lang_cell_value.lower() not in ['nan', '']:
+                        count_of_selected_languages += 1
+                        selected_language_names_for_row.append(lang_name)
+                if not selected_language_names_for_row: # If dual_lang, but no languages ticked for this specific row
+                    logging.debug(f"Row {data_row_idx+1} ({funnel_stage}, {format_primary}): Dual language sheet, but no languages selected for this row. Treating as 1 implicit language for combination count, but no language column will be added.")
+                    count_of_selected_languages = 1 # Still counts as 1 for total calculation if row is valid
+                    # selected_language_names_for_row remains empty, so no language-specific rows generated later if this path is taken.
+            else: # Single language sheet or dual_lang where lang group wasn't found for platform
+                count_of_selected_languages = 1
+                # selected_language_names_for_row remains empty
+
+            if sum_of_ar_format_ticks == 0:
+                logging.debug(f"Row {data_row_idx+1} ({funnel_stage}, {format_primary}): Skipping, no AR/Format items ticked for this row.")
+                data_row_idx += 1
+                continue
+
+            expected_combinations = sum_of_ar_format_ticks * count_of_selected_languages
+
+            if expected_combinations != total_val_from_sheet:
+                logging.warning(f"Row {data_row_idx+1} ({funnel_stage}, {format_primary}): Mismatch! Expected combinations '{expected_combinations}' (AR_sum:{sum_of_ar_format_ticks} * Lang_count:{count_of_selected_languages}) vs TOTAL in sheet '{total_val_from_sheet}'. Skipping row.")
+                data_row_idx += 1
                 continue
                 
-            # Calculate combinations based on: (Sum of AR/Format Ticks) * (Count of Selected Languages)
-            # This is based on user clarification: (e.g. (Video_ticks + Banner_ticks) * num_languages)
-            count_of_selected_languages = len(lang_counts_for_row)
-            expected_combinations_for_this_row = ar_sum * count_of_selected_languages
-            
-            logging.debug(f"  Calculated combinations for this row (sum_AR_ticks * count_selected_langs): {ar_sum} * {count_of_selected_languages} = {expected_combinations_for_this_row}")
+            logging.info(f"Row {data_row_idx+1} ({funnel_stage}, {format_primary}): Counts MATCH. Expected: {expected_combinations}, Sheet Total: {total_val_from_sheet}. Generating combinations.")
 
-            if total_from_sheet != expected_combinations_for_this_row:
-                logging.warning(f"Platform '{platform_name_found}', Excel Row {excel_sheet_row_num_for_log}: TOTAL column value '{total_from_sheet}' MISMATCHES calculated combinations '{expected_combinations_for_this_row}'. This input row will be SKIPPED.")
-                continue # Skip this data row if totals don't align
+            # Generate creative combinations
+            for ar_idx_tuple, ar_format_name_tuple in zip(enumerate(selected_ar_formats_for_row), selected_ar_formats_for_row):
+                # ar_idx_tuple is (original_index_in_selected_ar_formats, (actual_col_idx, ar_name))
+                # ar_format_name_tuple is (actual_col_idx, ar_name)
+                actual_ar_col_idx, ar_format_name = ar_format_name_tuple
+                num_ticks_for_ar = safe_to_numeric(data_values.iloc[actual_ar_col_idx], data_row_idx, ar_format_name)
+                
+                if num_ticks_for_ar > 0:
+                    for _ in range(int(num_ticks_for_ar)):
+                        base_row_data = {
+                            'Platform': platform_name_found,
+                            FUNNEL_STAGE_HEADER: funnel_stage,
+                            FORMAT_HEADER: format_primary,
+                            DURATION_HEADER: duration,
+                            OUTPUT_COLUMNS_BASE[4]: ar_format_name # Use config for 'Aspect Ratio / Format' key
+                        }
 
-            # Generate combinations if validation passed
-            row_combinations_generated_count = 0
-            for lang_detail in lang_counts_for_row:  # Iterate through each selected Language
-                current_language_name = lang_detail['name']
-                for ar_detail in ar_counts_for_row:  # Iterate through each selected AR/Format type
-                    current_ar_format_name = ar_detail['name']
-                    num_assets_for_this_ar_type = ar_detail['tick']
-                    
-                    if num_assets_for_this_ar_type > 0: # Only generate if the tick is positive
-                        for _ in range(num_assets_for_this_ar_type):
-                            transformed_data_all_platforms.append({
-                                'Platform': platform_name_found,
-                                'Funnel Stage': funnel_stage_val,
-                                'Format': format_primary_val,
-                                'Duration': duration_val,
-                                'Aspect Ratio / Format': current_ar_format_name,
-                                'Languages': current_language_name
-                            })
-                            row_combinations_generated_count += 1
-            
-            logging.debug(f"  Successfully generated {row_combinations_generated_count} combinations for this input row (Excel Row {excel_sheet_row_num_for_log}).")
-            platform_generated_rows_count += row_combinations_generated_count
-
-        logging.info(f"Platform '{platform_name_found}': Finished processing. Generated {platform_generated_rows_count} creative combinations for this platform.")
-        current_row_idx = data_row_idx # Move to the start of the next potential platform
+                        if is_dual_lang and selected_language_names_for_row: # If dual lang and specific languages were ticked for the row
+                            for lang_name in selected_language_names_for_row:
+                                specific_row = base_row_data.copy()
+                                specific_row[OUTPUT_LANGUAGE_COLUMN] = lang_name
+                                transformed_data_all_platforms.append(specific_row)
+                        else: # Single language OR Dual Lang with no specific languages selected for this row (implicit single language for this row)
+                            transformed_data_all_platforms.append(base_row_data) # No language column for single lang or if no langs selected
+                
+            data_row_idx += 1
+        # After processing all data rows for the current platform
+        current_row_idx = data_row_idx # Move to the start of the next potential platform or end of sheet
+    else:
+        current_row_idx += 1 # Increment to search for the next platform title
 
     return transformed_data_all_platforms
 
-def main():
-    setup_logging()
 
-    input_excel_file = select_excel_file()
-    if not input_excel_file:
-        logging.info("User cancelled file selection. Exiting script.")
-        # Show messagebox on top
-        temp_root = tk.Tk()
-        temp_root.withdraw()
-        temp_root.attributes('-topmost', True)
-        messagebox.showinfo("Cancelled", "No file selected. Exiting script.", parent=temp_root)
-        temp_root.attributes('-topmost', False)
-        temp_root.destroy()
-        return
+def process_excel_file_for_streamlit(input_excel_file_path: str) -> dict:
+    """
+    Processes the given Excel file for Streamlit app usage.
+    Attempts to read and transform 'Tracker (Dual Lang)' and 'Tracker (Single Lang)' sheets.
+    Returns a dictionary of DataFrames, keyed by sheet type name.
+    """
+    setup_logging() # Ensure logging is configured when called as a module
+    logging.info(f"Processing Excel file for Streamlit: {os.path.basename(input_excel_file_path)}")
 
-    logging.info(f"Starting Excel transformation for file: {os.path.basename(input_excel_file)}, sheet: {INPUT_SHEET_NAME}")
+    results_by_sheet_type = {}
 
-    try:
-        df_full_sheet = pd.read_excel(input_excel_file, sheet_name=INPUT_SHEET_NAME, header=None)
-    except FileNotFoundError:
-        logging.error(f"Error: The file '{input_excel_file}' was not found.")
-        temp_root = tk.Tk()
-        temp_root.withdraw()
-        temp_root.attributes('-topmost', True)
-        messagebox.showerror("Error", f"File Not Found: '{os.path.basename(input_excel_file)}'", parent=temp_root)
-        temp_root.attributes('-topmost', False)
-        temp_root.destroy()
-        return
-    except Exception as e:
-        logging.error(f"Error reading Excel file '{input_excel_file}': {e}")
-        temp_root = tk.Tk()
-        temp_root.withdraw()
-        temp_root.attributes('-topmost', True)
-        messagebox.showerror("Error", f"Error reading Excel file '{os.path.basename(input_excel_file)}':\n{e}", parent=temp_root)
-        temp_root.attributes('-topmost', False)
-        temp_root.destroy()
-        return
+    sheets_to_process_config = [
+        {
+            "name": DUAL_LANG_INPUT_SHEET_NAME,
+            "is_dual": True,
+            "output_key": DUAL_LANG_INPUT_SHEET_NAME, # Or could use config.OUTPUT_SHEET_NAME_DUAL_LANG
+            "output_cols": OUTPUT_COLUMNS_BASE + [OUTPUT_LANGUAGE_COLUMN]
+        },
+        {
+            "name": SINGLE_LANG_INPUT_SHEET_NAME,
+            "is_dual": False,
+            "output_key": SINGLE_LANG_INPUT_SHEET_NAME, # Or could use config.OUTPUT_SHEET_NAME_SINGLE_LANG
+            "output_cols": OUTPUT_COLUMNS_BASE
+        }
+    ]
 
-    transformed_data = find_platform_tables_and_transform(df_full_sheet)
-
-    if transformed_data:
-        output_df = pd.DataFrame(transformed_data)
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_filename = f"{OUTPUT_FILE_BASENAME}_{timestamp}.xlsx"
-        
-        # Ensure correct column order for the output
-        output_columns_ordered = ['Platform', 'Funnel Stage', 'Format', 'Duration', 'Aspect Ratio / Format', 'Languages']
-        output_df = output_df.reindex(columns=output_columns_ordered)
+    for config_item in sheets_to_process_config:
+        sheet_name_to_process = config_item["name"]
+        is_dual = config_item["is_dual"]
+        output_key = config_item["output_key"]
+        final_columns = config_item["output_cols"]
+        df_transformed = None
 
         try:
-            output_df.to_excel(output_filename, index=False)
-            logging.info(f"Successfully transformed data written to {output_filename}")
-            logging.info(f"Total unique creative combinations generated: {len(output_df)}")
-            temp_root = tk.Tk()
-            temp_root.withdraw()
-            temp_root.attributes('-topmost', True)
-            messagebox.showinfo("Success", f"Successfully transformed data written to:\n{output_filename}", parent=temp_root)
-            temp_root.attributes('-topmost', False)
-            temp_root.destroy()
-        except Exception as e:
-            logging.error(f"Error writing output file '{output_filename}': {e}")
-            temp_root = tk.Tk()
-            temp_root.withdraw()
-            temp_root.attributes('-topmost', True)
-            messagebox.showerror("Error", f"Error writing output file '{output_filename}':\n{e}", parent=temp_root)
-            temp_root.attributes('-topmost', False)
-            temp_root.destroy()
-    else:
-        logging.info("No data was transformed. Output file not created.")
-        temp_root = tk.Tk()
-        temp_root.withdraw()
-        temp_root.attributes('-topmost', True)
-        messagebox.showwarning("No Data", "No data was transformed. Output file will not be generated.", parent=temp_root)
-        temp_root.attributes('-topmost', False)
-        temp_root.destroy()
+            logging.info(f"Attempting to read sheet: '{sheet_name_to_process}'")
+            df_sheet = pd.read_excel(input_excel_file_path, sheet_name=sheet_name_to_process, header=None)
+            logging.info(f"Successfully read sheet: '{sheet_name_to_process}'. Starting transformation.")
+            
+            transformed_rows = find_platform_tables_and_transform(df_sheet, is_dual_lang=is_dual)
+            
+            if transformed_rows:
+                df_transformed = pd.DataFrame(transformed_rows)
+                # Ensure correct column order and presence
+                df_transformed = df_transformed.reindex(columns=final_columns)
+                logging.info(f"Sheet '{sheet_name_to_process}': Transformation successful. Generated {len(df_transformed)} rows.")
+            else:
+                logging.info(f"Sheet '{sheet_name_to_process}': No data transformed.")
+                # Store an empty DataFrame with correct columns if no rows transformed but sheet existed
+                df_transformed = pd.DataFrame(columns=final_columns)
 
-    logging.info("Transformation script finished.")
+        except ValueError as e:
+            # Typically occurs if sheet_name is not found
+            if "sheet_name" in str(e).lower() and f"'{sheet_name_to_process}'" in str(e):
+                logging.warning(f"Sheet '{sheet_name_to_process}' not found in the Excel file. Skipping.")
+            else:
+                logging.error(f"Error processing sheet '{sheet_name_to_process}': {e}")
+        except Exception as e:
+            logging.error(f"Unexpected error processing sheet '{sheet_name_to_process}': {e}")
+        
+        results_by_sheet_type[output_key] = df_transformed
+
+    return results_by_sheet_type
+
+
+# Old main function is being replaced by process_excel_file_for_streamlit for module use,
+# and the __main__ block will handle standalone execution.
 
 if __name__ == "__main__":
-    main()
+    # This block executes when the script is run directly.
+    setup_logging() # Ensure logging is setup for standalone run
+
+    input_file = select_excel_file()
+    if not input_file:
+        logging.info("User cancelled file selection or no file provided. Exiting script.")
+        if _TK_AVAILABLE:
+            # Simplified Tkinter message for standalone cancellation
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes('-topmost', True)
+            messagebox.showinfo("Cancelled", "No file selected. Exiting script.", parent=root)
+            root.attributes('-topmost', False)
+            root.destroy()
+        exit()
+
+    logging.info(f"Starting standalone Excel transformation for file: {os.path.basename(input_file)}")
+    
+    processed_data_map = process_excel_file_for_streamlit(input_file)
+    
+    output_dfs_to_write = []
+    sheet_names_for_output = []
+
+    # Check Dual Lang results
+    df_dual = processed_data_map.get(DUAL_LANG_INPUT_SHEET_NAME)
+    if df_dual is not None and not df_dual.empty:
+        output_dfs_to_write.append(df_dual)
+        sheet_names_for_output.append(config.OUTPUT_SHEET_NAME_DUAL_LANG) # Use config for output sheet name
+        logging.info(f"'{DUAL_LANG_INPUT_SHEET_NAME}' processed: {len(df_dual)} rows.")
+    elif df_dual is not None: # Exists but empty
+        logging.info(f"'{DUAL_LANG_INPUT_SHEET_NAME}' processed, but resulted in 0 rows.")
+    else: # Not processed (e.g. sheet not found)
+        logging.info(f"'{DUAL_LANG_INPUT_SHEET_NAME}' was not processed or not found.")
+
+    # Check Single Lang results
+    df_single = processed_data_map.get(SINGLE_LANG_INPUT_SHEET_NAME)
+    if df_single is not None and not df_single.empty:
+        output_dfs_to_write.append(df_single)
+        sheet_names_for_output.append(config.OUTPUT_SHEET_NAME_SINGLE_LANG) # Use config for output sheet name
+        logging.info(f"'{SINGLE_LANG_INPUT_SHEET_NAME}' processed: {len(df_single)} rows.")
+    elif df_single is not None: # Exists but empty
+        logging.info(f"'{SINGLE_LANG_INPUT_SHEET_NAME}' processed, but resulted in 0 rows.")
+    else: # Not processed
+        logging.info(f"'{SINGLE_LANG_INPUT_SHEET_NAME}' was not processed or not found.")
+
+    if output_dfs_to_write:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Use OUTPUT_FILE_BASENAME from config
+        output_filename = f"{OUTPUT_FILE_BASENAME}_{timestamp}.xlsx"
+        
+        try:
+            with pd.ExcelWriter(output_filename, engine='openpyxl') as writer:
+                for df_out, sheet_name_out in zip(output_dfs_to_write, sheet_names_for_output):
+                    df_out.to_excel(writer, sheet_name=sheet_name_out, index=False)
+            logging.info(f"Successfully transformed data written to {output_filename} with sheets: {sheet_names_for_output}")
+            if _TK_AVAILABLE:
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
+                messagebox.showinfo("Success", f"Data written to:\n{output_filename}", parent=root)
+                root.attributes('-topmost', False)
+                root.destroy()
+        except Exception as e:
+            logging.error(f"Error writing output file '{output_filename}': {e}")
+            if _TK_AVAILABLE:
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
+                messagebox.showerror("Error", f"Error writing to '{output_filename}':\n{e}", parent=root)
+                root.attributes('-topmost', False)
+                root.destroy()
+    else:
+        logging.info("No data was transformed from any sheet. Output file not created.")
+        if _TK_AVAILABLE:
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes('-topmost', True)
+            messagebox.showwarning("No Data", "No data transformed. Output not generated.", parent=root)
+            root.attributes('-topmost', False)
+            root.destroy()
+
+    logging.info("Transformation script finished.")

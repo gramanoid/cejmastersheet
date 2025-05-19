@@ -9,10 +9,15 @@ APP_NAME = "Excel Transformer"
 VERSION = "2.0.0"
 
 # File handling
-INPUT_SHEET_NAME = 'Tracker (Dual Lang)'
+DUAL_LANG_INPUT_SHEET_NAME = 'Tracker (Dual Lang)'
+SINGLE_LANG_INPUT_SHEET_NAME = 'Tracker (Single Lang)'
 OUTPUT_FILE_BASENAME = 'transformed_CEJ_master_specsheet'
 LOG_FILE = 'transformer.log'
 DEFAULT_OUTPUT_FORMAT = 'xlsx'  # Can be 'xlsx' or 'csv'
+
+# Output sheet names for the transformed data
+OUTPUT_SHEET_NAME_DUAL_LANG = 'Transformed_Dual_Lang'
+OUTPUT_SHEET_NAME_SINGLE_LANG = 'Transformed_Single_Lang'
 
 # Platform configuration
 PLATFORM_NAMES: Dict[str, str] = {
@@ -28,21 +33,24 @@ PLATFORM_NAMES: Dict[str, str] = {
 # Excel parsing constants
 MAIN_HEADER_ASPECT_RATIO_GROUP_PRIMARY = "Aspect Ratio"
 MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY = "Format"
-MAIN_HEADER_LANGUAGES_GROUP = "Languages"  # Original name, kept for broader compatibility if needed
-LANGUAGE_HEADER = "Languages"            # Corrected name to match streamlit_app.py usage
-TOTAL_HEADER = "TOTAL" # Renamed from MAIN_HEADER_TOTAL_COL
-PLATFORM_COLUMN_HEADER = "PLATFORM" # Header name in the first column to identify platform sections
-FUNNEL_STAGE_HEADER = "Funnel Stage" # Header name for the funnel stage column
-FORMAT_HEADER = "Format"             # Header name for the format column
-DURATION_HEADER = "Duration"           # Header name for the duration column
+MAIN_HEADER_LANGUAGES_GROUP = "Languages"
+MAIN_HEADER_TOTAL_COL = "TOTAL"
+
+# Column header constants used across the application
+PLATFORM_COLUMN_HEADER = "PLATFORM"
+FUNNEL_STAGE_HEADER = "Funnel Stage"
+FORMAT_HEADER = "Format"
+DURATION_HEADER = "Duration"
+TOTAL_HEADER = MAIN_HEADER_TOTAL_COL
+LANGUAGE_HEADER = MAIN_HEADER_LANGUAGES_GROUP
 
 # Core headers expected in the main header row for validation
 CORE_MAIN_HEADERS = [
-    FUNNEL_STAGE_HEADER,
-    FORMAT_HEADER,
-    DURATION_HEADER,
-    LANGUAGE_HEADER, # Using the corrected LANGUAGE_HEADER
-    TOTAL_HEADER
+    "Funnel Stage",
+    "Format",
+    "Duration",
+    MAIN_HEADER_LANGUAGES_GROUP,
+    MAIN_HEADER_TOTAL_COL
 ]
 
 # Row offsets (0-indexed)
@@ -62,11 +70,11 @@ LOG_MAX_BYTES = 10 * 1024 * 1024  # 10MB
 LOG_BACKUP_COUNT = 3
 
 # Output configuration
-OUTPUT_COLUMNS = [
+OUTPUT_COLUMNS_BASE = [
     'Platform',
     'Funnel Stage',
     'Format',
     'Duration',
-    'Aspect Ratio / Format',
-    'Languages'
+    'Aspect Ratio / Format'
 ]
+OUTPUT_LANGUAGE_COLUMN = 'Languages'
