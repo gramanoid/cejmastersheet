@@ -70,9 +70,11 @@ def setup_streamlit_logging():
 # --- Streamlit App UI ---
 def run_streamlit_app():
     # Initial call to setup_streamlit_logging was removed to ensure it's only called on button press.
-    st.title("CEJ Master Spec Sheet Transformer")
+    st.title(f"CEJ Master Spec Sheet Transformer v{config.VERSION}")
 
     st.markdown("Upload the 'Haleon CEJ Master Spec Sheet' Excel file to transform the 'Tracker (Dual Lang)' and 'Tracker (Single Lang)' sheets.")
+    
+    st.info("✅ **v2.2.0 Features**: Improved platform detection using 'Funnel Stage' markers • Support for all 7 platforms (YouTube, META, TikTok, Programmatic, Audio, Gaming, Amazon) • Enhanced dual/single language processing")
 
     uploaded_file = st.file_uploader("Choose an Excel file", type="xlsx")
     if uploaded_file is not None:
