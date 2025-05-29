@@ -86,6 +86,9 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
     transformed_data_all_platforms = []
     current_row_idx = START_ROW_SEARCH_FOR_PLATFORM - 3 # Start search a bit earlier
     if current_row_idx < 0: current_row_idx = 0
+    
+    logging.info(f"Starting platform search for {'Dual Lang' if is_dual_lang else 'Single Lang'} sheet from row {current_row_idx + 1}")
+    logging.info(f"Looking for platforms: {list(PLATFORM_NAMES.values())}")
 
     # Define core main headers dynamically based on sheet type
     core_main_headers_check = [FUNNEL_STAGE_HEADER, FORMAT_HEADER, DURATION_HEADER, MAIN_HEADER_TOTAL_COL]
@@ -96,39 +99,55 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
     while current_row_idx < len(df_full_sheet):
         platform_name_found = None
         platform_header_row_actual_idx = -1
+        main_header_row_actual_idx = -1
 
-        # Search for platform name in the next few rows
-        for search_offset in range(10): # Search a window of 10 rows
+        # Search for "Funnel Stage" in the next rows
+        for search_offset in range(30): # Larger window to find main headers
             check_row_idx = current_row_idx + search_offset
             if check_row_idx >= len(df_full_sheet):
                 break
             
-            row_values = df_full_sheet.iloc[check_row_idx].astype(str).values
-            for cell_value in row_values[:3]: # Check first 3 cells for platform name
-                if pd.isna(cell_value) or cell_value.strip() == '':
-                    continue
-                for p_name in PLATFORM_NAMES:
-                    if p_name.lower() in cell_value.lower():
-                        platform_name_found = p_name
-                        platform_header_row_actual_idx = check_row_idx
-                        logging.info(f"Found platform '{platform_name_found}' title on sheet row {platform_header_row_actual_idx + 1}.")
-                        break
-                if platform_name_found:
+            # Check all columns for "Funnel Stage"
+            row_values = df_full_sheet.iloc[check_row_idx]
+            for col_idx, cell_value in enumerate(row_values):
+                if pd.notna(cell_value) and str(cell_value).strip().lower() == "funnel stage":
+                    # Found "Funnel Stage" - this is the main header row
+                    main_header_row_actual_idx = check_row_idx
+                    
+                    # Platform name should be 2 rows above in column B
+                    platform_header_row_actual_idx = check_row_idx - 2
+                    
+                    if platform_header_row_actual_idx >= 0:
+                        platform_cell = df_full_sheet.iloc[platform_header_row_actual_idx, 1]  # Column B (index 1)
+                        if pd.notna(platform_cell):
+                            platform_cell_str = str(platform_cell).strip().upper()
+                            
+                            # Check if it matches any known platform
+                            for p_key, p_value in PLATFORM_NAMES.items():
+                                if platform_cell_str == p_value.upper() or platform_cell_str == p_key.upper():
+                                    platform_name_found = p_value
+                                    logging.info(f"Found platform '{platform_name_found}' at row {platform_header_row_actual_idx + 1} (2 rows above 'Funnel Stage' at row {main_header_row_actual_idx + 1})")
+                                    break
+                            
+                            if not platform_name_found:
+                                # Unknown platform name, but structure is valid
+                                logging.warning(f"Found unknown platform '{platform_cell_str}' at row {platform_header_row_actual_idx + 1}. Skipping.")
                     break
+            
             if platform_name_found:
                 break
         
         if not platform_name_found:
-            logging.info(f"No more platform titles found after sheet row {current_row_idx + 1}.")
-            break # End of platforms
-
-        current_row_idx = platform_header_row_actual_idx # Move main scan index to where platform was found
-
-        main_header_row_actual_idx = platform_header_row_actual_idx + MAIN_HEADER_ROW_OFFSET
-        if main_header_row_actual_idx >= len(df_full_sheet):
-            logging.warning(f"Platform '{platform_name_found}': Main header row index {main_header_row_actual_idx+1} is out of bounds. Skipping platform.")
-            current_row_idx = platform_header_row_actual_idx + 1 # Move to next row after platform title
+            logging.debug(f"No 'Funnel Stage' found in search window starting at sheet row {current_row_idx + 1}.")
+            # Move forward to continue searching
+            current_row_idx += 10  # Skip ahead more to avoid getting stuck
+            if current_row_idx >= len(df_full_sheet) - 10:  # Near end of sheet
+                logging.info(f"Reached near end of sheet. Stopping platform search.")
+                break
             continue
+
+        # We already have main_header_row_actual_idx from our search
+        # No need to recalculate it
 
         main_header_values = df_full_sheet.iloc[main_header_row_actual_idx].str.strip().astype(str).tolist()
         logging.debug(f"Platform '{platform_name_found}': Potential main header at row {main_header_row_actual_idx+1}: {main_header_values}")
@@ -153,12 +172,20 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
 
         # Aspect Ratio / Secondary Format group columns
         ar_group_header_actual = ""
+        ar_group_header_col_idx = -1
+        
         if MAIN_HEADER_ASPECT_RATIO_GROUP_PRIMARY in main_header_values:
             ar_group_header_actual = MAIN_HEADER_ASPECT_RATIO_GROUP_PRIMARY
+            ar_group_header_col_idx = main_header_values.index(ar_group_header_actual)
         elif MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY in main_header_values: # Fallback for platforms like Programmatic
             ar_group_header_actual = MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY
-        
-        ar_group_header_col_idx = main_header_values.index(ar_group_header_actual)
+            # Find ALL occurrences of "Format" 
+            format_indices = [i for i, h in enumerate(main_header_values) if h == MAIN_HEADER_ASPECT_RATIO_GROUP_SECONDARY]
+            if len(format_indices) > 1:
+                # Use the second "Format" (not the primary format column)
+                ar_group_header_col_idx = format_indices[1] if format_indices[0] == format_col_idx else format_indices[0]
+            else:
+                ar_group_header_col_idx = format_indices[0]
         sub_header_row_actual_idx = platform_header_row_actual_idx + SUB_HEADER_ROW_OFFSET
         ar_sub_header_values = df_full_sheet.iloc[sub_header_row_actual_idx].astype(str).tolist()
         
@@ -183,6 +210,13 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
             elif str(main_header_values[i]).strip() not in ['', 'nan'] and i > ar_group_header_col_idx: # Stop if we hit another main header
                 break 
         logging.info(f"Platform '{platform_name_found}': Identified Aspect Ratio/Format columns: {ar_col_names} at indices {ar_cols_indices}")
+        
+        if not ar_col_names and ar_group_header_col_idx >= 0:
+            # Debug why no columns were found
+            logging.debug(f"Platform '{platform_name_found}': AR group header '{ar_group_header_actual}' at col {ar_group_header_col_idx}")
+            logging.debug(f"Platform '{platform_name_found}': Checking columns {ar_group_header_col_idx} to {next_main_header_boundary_idx}")
+            for i in range(ar_group_header_col_idx, min(ar_group_header_col_idx + 5, next_main_header_boundary_idx)):
+                logging.debug(f"  Col {i}: main='{main_header_values[i] if i < len(main_header_values) else 'OOB'}', sub='{ar_sub_header_values[i] if i < len(ar_sub_header_values) else 'OOB'}')")
 
         # Languages group columns (only if dual_lang is true)
         lang_group_header_col_idx = -1
@@ -207,11 +241,8 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
         
         if not ar_cols_indices:
             logging.warning(f"Platform '{platform_name_found}': No Aspect Ratio/Format sub-columns found. Skipping platform.")
-            current_row_idx = platform_header_row_actual_idx + DATA_START_ROW_OFFSET # Move to next platform section or end of data
-            data_row_idx = main_header_row_actual_idx + 1 
-            while data_row_idx < len(df_full_sheet) and pd.isna(df_full_sheet.iloc[data_row_idx, 0]): # Iterate through data rows of current table
-                data_row_idx +=1
-            current_row_idx = data_row_idx 
+            # Continue searching from a reasonable position after this platform
+            current_row_idx = main_header_row_actual_idx + 5  # Skip past this platform's header area
             continue
 
         # Process data rows for this platform
@@ -219,11 +250,18 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
         data_row_idx = data_start_row_for_platform
 
         while data_row_idx < len(df_full_sheet):
-            # Stop if we encounter another platform title or a completely empty row (signaling end of data for this platform)
-            # Check for new platform title in the first column (approx)
-            potential_next_platform_title = str(df_full_sheet.iloc[data_row_idx, 0]).strip().upper()
-            if any(platform.upper() in potential_next_platform_title for platform in PLATFORM_NAMES.values()) and not pd.isna(df_full_sheet.iloc[data_row_idx, 0]):
-                logging.debug(f"Platform '{platform_name_found}': Encountered new platform title '{df_full_sheet.iloc[data_row_idx, 0]}' at row {data_row_idx+1}. Ending processing for current platform.")
+            # Stop if we encounter "Funnel Stage" in any column (indicates start of next platform)
+            found_next_platform = False
+            for col_idx in range(len(df_full_sheet.columns)):
+                cell_val = df_full_sheet.iloc[data_row_idx, col_idx]
+                if pd.notna(cell_val) and str(cell_val).strip().lower() == "funnel stage":
+                    logging.debug(f"Platform '{platform_name_found}': Found 'Funnel Stage' at row {data_row_idx+1}. End of current platform data.")
+                    found_next_platform = True
+                    break
+            
+            if found_next_platform:
+                # Move back 2 rows to position at the next platform header
+                current_row_idx = data_row_idx - 2
                 break 
             
             # Check if the row is empty or Funnel Stage is empty (heuristic for end of table section)
@@ -306,10 +344,18 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
                 
             data_row_idx += 1
         # After processing all data rows for the current platform
+        logging.info(f"Completed processing platform '{platform_name_found}'. Moving to search from row {data_row_idx + 1}")
         current_row_idx = data_row_idx # Move to the start of the next potential platform or end of sheet
-    else:
-        current_row_idx += 1 # Increment to search for the next platform title
 
+    # Summary of platforms processed
+    platforms_found = set()
+    for row in transformed_data_all_platforms:
+        platforms_found.add(row['Platform'])
+    
+    logging.info(f"Platform search complete for {'Dual Lang' if is_dual_lang else 'Single Lang'} sheet")
+    logging.info(f"Platforms successfully processed: {sorted(list(platforms_found))}")
+    logging.info(f"Total rows generated: {len(transformed_data_all_platforms)}")
+    
     return transformed_data_all_platforms
 
 
@@ -463,3 +509,16 @@ if __name__ == "__main__":
             root.destroy()
 
     logging.info("Transformation script finished.")
+    
+    # Optional: Run validation if validation_script is available
+    try:
+        import validation_script
+        if output_dfs_to_write and 'output_filename' in locals():
+            logging.info("Running validation to verify output accuracy...")
+            is_valid = validation_script.quick_validate(input_file, output_filename)
+            if is_valid:
+                logging.info("✅ VALIDATION PASSED - Output combinations match input totals!")
+            else:
+                logging.warning("⚠️ VALIDATION FAILED - Output combinations don't match input totals!")
+    except ImportError:
+        logging.debug("Validation script not available. Skipping validation.")
