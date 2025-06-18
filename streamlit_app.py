@@ -19,19 +19,23 @@ st.set_page_config(
 )
 
 # --- Display Header Image (Immediately after page config) ---
-header_img = Image.open("header.png")
-buffered = BytesIO()
-header_img.save(buffered, format="PNG")
-img_b64 = base64.b64encode(buffered.getvalue()).decode()
+try:
+    header_img = Image.open("header.png")
+    buffered = BytesIO()
+    header_img.save(buffered, format="PNG")
+    img_b64 = base64.b64encode(buffered.getvalue()).decode()
 
-st.markdown(
-    f"""
-    <div style='text-align:center;'>
-        <img src='data:image/png;base64,{img_b64}' style='width:40%; height:auto;' />
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+    st.markdown(
+        f"""
+        <div style='text-align:center;'>
+            <img src='data:image/png;base64,{img_b64}' style='width:40%; height:auto;' />
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+except Exception as e:
+    # If header image fails to load, just continue without it
+    st.warning(f"Header image could not be loaded: {e}")
 
 
 # setup_streamlit_logging remains to capture logs for display in the UI
@@ -70,9 +74,11 @@ def setup_streamlit_logging():
 # --- Streamlit App UI ---
 def run_streamlit_app():
     # Initial call to setup_streamlit_logging was removed to ensure it's only called on button press.
-    st.title("CEJ Master Spec Sheet Transformer")
+    st.title(f"CEJ Master Spec Sheet Transformer v{config.VERSION}")
 
     st.markdown("Upload the 'Haleon CEJ Master Spec Sheet' Excel file to transform the 'Tracker (Dual Lang)' and 'Tracker (Single Lang)' sheets.")
+    
+    st.info("✅ **v2.2.0 Features**: Improved platform detection using 'Funnel Stage' markers • Support for all 7 platforms (YouTube, META, TikTok, Programmatic, Audio, Gaming, Amazon) • Enhanced dual/single language processing")
 
     uploaded_file = st.file_uploader("Choose an Excel file", type="xlsx")
     if uploaded_file is not None:
