@@ -6,7 +6,7 @@ from pathlib import Path
 
 # Application constants
 APP_NAME = "Excel Transformer"
-VERSION = "2.1.0"
+VERSION = "2.3.0"
 
 # File handling
 DUAL_LANG_INPUT_SHEET_NAME = 'Tracker (Dual Lang)'
@@ -62,6 +62,9 @@ DATA_START_ROW_OFFSET = 4
 
 # Search window size for platform detection
 PLATFORM_SEARCH_WINDOW = 10
+
+# Maximum empty rows to skip when searching for next platform
+MAX_EMPTY_ROWS_BETWEEN_PLATFORMS = 20
 
 # Logging configuration
 LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
