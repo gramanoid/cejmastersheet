@@ -19,19 +19,26 @@ st.set_page_config(
 )
 
 # --- Display Header Image (Immediately after page config) ---
-header_img = Image.open("header.png")
-buffered = BytesIO()
-header_img.save(buffered, format="PNG")
-img_b64 = base64.b64encode(buffered.getvalue()).decode()
-
-st.markdown(
-    f"""
-    <div style='text-align:center;'>
-        <img src='data:image/png;base64,{img_b64}' style='width:40%; height:auto;' />
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+try:
+    header_img = Image.open("header.png")
+    buffered = BytesIO()
+    header_img.save(buffered, format="PNG")
+    img_b64 = base64.b64encode(buffered.getvalue()).decode()
+    
+    st.markdown(
+        f"""
+        <div style='text-align:center;'>
+            <img src='data:image/png;base64,{img_b64}' style='width:40%; height:auto;' />
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+except FileNotFoundError:
+    # If header image is missing, just show the title without image
+    logging.warning("header.png not found. Proceeding without header image.")
+except Exception as e:
+    logging.error(f"Error loading header image: {e}")
+    # Continue without header image
 
 
 # setup_streamlit_logging remains to capture logs for display in the UI

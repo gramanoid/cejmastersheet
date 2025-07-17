@@ -22,7 +22,7 @@ try:
     import tkinter as tk
     from tkinter import filedialog, messagebox
     _TK_AVAILABLE = True
-except Exception:  # ImportError or _tkinter errors
+except (ImportError, ModuleNotFoundError):  # Handle missing tkinter module
     tk = None
     filedialog = None
     messagebox = None
@@ -74,11 +74,15 @@ def select_excel_file():
 
 def safe_to_numeric(value, context_row_idx, context_col_name):
     """Attempts to convert value to numeric, handling potential errors and non-numeric strings."""
-    if pd.isna(value) or str(value).strip() == '':
+    if pd.isna(value):
+        return 0
+    # Convert to string first to handle mixed types
+    value_str = str(value).strip()
+    if value_str == '':
         return 0
     try:
         return pd.to_numeric(value)
-    except ValueError:
+    except (ValueError, TypeError):
         logging.warning(f"Row {context_row_idx+1}, Col '{context_col_name}': Could not convert '{value}' to numeric. Treating as 0.")
         return 0
 
@@ -117,7 +121,7 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
                     # Platform name should be 2 rows above in column B
                     platform_header_row_actual_idx = check_row_idx - 2
                     
-                    if platform_header_row_actual_idx >= 0:
+                    if platform_header_row_actual_idx >= 0 and len(df_full_sheet.columns) > 1:
                         platform_cell = df_full_sheet.iloc[platform_header_row_actual_idx, 1]  # Column B (index 1)
                         if pd.notna(platform_cell):
                             platform_cell_str = str(platform_cell).strip().upper()
@@ -149,7 +153,14 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
         # We already have main_header_row_actual_idx from our search
         # No need to recalculate it
 
-        main_header_values = df_full_sheet.iloc[main_header_row_actual_idx].str.strip().astype(str).tolist()
+        # Safely convert row to string values, handling mixed types
+        main_header_row = df_full_sheet.iloc[main_header_row_actual_idx]
+        main_header_values = []
+        for val in main_header_row:
+            if pd.isna(val):
+                main_header_values.append('')
+            else:
+                main_header_values.append(str(val).strip())
         logging.debug(f"Platform '{platform_name_found}': Potential main header at row {main_header_row_actual_idx+1}: {main_header_values}")
 
         # Validate core headers presence
@@ -187,7 +198,13 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
             else:
                 ar_group_header_col_idx = format_indices[0]
         sub_header_row_actual_idx = platform_header_row_actual_idx + SUB_HEADER_ROW_OFFSET
-        ar_sub_header_values = df_full_sheet.iloc[sub_header_row_actual_idx].astype(str).tolist()
+        if sub_header_row_actual_idx < len(df_full_sheet):
+            ar_sub_header_row = df_full_sheet.iloc[sub_header_row_actual_idx]
+            ar_sub_header_values = [str(val) if pd.notna(val) else '' for val in ar_sub_header_row]
+        else:
+            logging.error(f"Sub-header row index {sub_header_row_actual_idx} out of bounds")
+            current_row_idx = platform_header_row_actual_idx + 1
+            continue
         
         ar_cols_indices = []
         ar_col_names = []
@@ -266,6 +283,9 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
             
             # Check if the row is empty or Funnel Stage is empty (heuristic for end of table section)
             # Consider a row empty if the 'Funnel Stage' column is empty for that row
+            if data_row_idx >= len(df_full_sheet) or funnel_stage_col_idx >= len(df_full_sheet.columns):
+                logging.debug(f"Platform '{platform_name_found}': Row or column index out of bounds.")
+                break
             if pd.isna(df_full_sheet.iloc[data_row_idx, funnel_stage_col_idx]) or str(df_full_sheet.iloc[data_row_idx, funnel_stage_col_idx]).strip() == '':
                 logging.debug(f"Platform '{platform_name_found}': Encountered empty 'Funnel Stage' at row {data_row_idx+1}. Assuming end of data for this platform.")
                 break
