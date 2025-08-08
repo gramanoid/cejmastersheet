@@ -1,49 +1,66 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
-
-# Distribution / packaging
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
 dist/
 build/
-*.egg-info/
+site/
+pip-wheel-metadata/
+
+# PyInstaller
 *.spec
-*.exe
+dist/ExcelTransformer/
+build/ExcelTransformer/
 
-# Environment variables and secrets
-.env
-.env*.local
+# Virtual environments
+.venv/
+venv/
+env/
 
-# Local development settings
+# Logs
+*.log
+logs/
+transformer.log
+
+# IDE / Editor
 .vscode/
 .idea/
+*.code-workspace
 
-# Streamlit specific ignores
-.streamlit/secrets.toml
+# OS files
+.DS_Store
+Thumbs.db
 
-# Data files - generally should not be in the repo if user uploads
+# Streamlit
+.streamlit/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Generated outputs
+transformed_*.xlsx
+transformed_CEJ_master_specsheet_*.xlsx
+transformed_test_*.xlsx
+validation_*.log
+validation_report_*.json
+
+# Excel files (inputs/samples)
 *.xlsx
 *.xls
-*.csv
 
-# Project-specific or temporary files/folders to ignore
-memory-bank/
-!memory-bank/*.md
-.windsurfrules
-global_rules.md
-splash_screenv2.png
-transformation_plan.md
+# Binaries
+upx.exe
 
-# Logs and temp files
-*.log
-*.tmp
+# Windows alternate data stream artifacts
+*:Zone.Identifier
 
-# OS-specific files
-Thumbs.db
-desktop.ini
-.DS_Store
+# Temporary files
+tmp/
+temp/
 
-# Re-include essential files if a broader pattern above excluded them
-!header.png
-!config.py 
-# Note: .streamlit/config.toml is not excluded by .streamlit/secrets.toml
+# Existing patterns
+.aider*

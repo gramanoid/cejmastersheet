@@ -15,7 +15,8 @@ from config import (
     LOG_LEVEL, LOG_FORMAT, LOG_MAX_BYTES, LOG_BACKUP_COUNT, # Assuming these are used by setup_logging
     OUTPUT_COLUMNS_BASE, OUTPUT_LANGUAGE_COLUMN, # For output structure
     FUNNEL_STAGE_HEADER, FORMAT_HEADER, DURATION_HEADER, # Specific header names from config
-    OUTPUT_SHEET_NAME_DUAL_LANG, OUTPUT_SHEET_NAME_SINGLE_LANG # Output sheet names
+    OUTPUT_SHEET_NAME_DUAL_LANG, OUTPUT_SHEET_NAME_SINGLE_LANG, # Output sheet names
+    FUNNEL_STAGES, EXPAND_ALL_TO_ACP # Funnel expansion config
 )
 
 # Tkinter is optional (GUI-only). Gracefully degrade if not available (e.g., on Streamlit Cloud)
@@ -279,6 +280,11 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
             duration = str(data_values.iloc[duration_col_idx]).strip()
             total_val_from_sheet = safe_to_numeric(data_values.iloc[total_col_idx], data_row_idx, MAIN_HEADER_TOTAL_COL)
 
+            # Expand 'ALL' funnel stage into A/C/P if enabled
+            stages_to_emit = [funnel_stage]
+            if EXPAND_ALL_TO_ACP and str(funnel_stage).strip().upper() == "ALL":
+                stages_to_emit = FUNNEL_STAGES
+
             sum_of_ar_format_ticks = 0
             selected_ar_formats_for_row = [] # List of tuples (col_idx, ar_format_name)
             for ar_idx, ar_name in zip(ar_cols_indices, ar_col_names):
@@ -327,22 +333,23 @@ def find_platform_tables_and_transform(df_full_sheet, is_dual_lang: bool):
                 
                 if num_ticks_for_ar > 0:
                     for _ in range(int(num_ticks_for_ar)):
-                        base_row_data = {
-                            'Platform': platform_name_found,
-                            FUNNEL_STAGE_HEADER: funnel_stage,
-                            FORMAT_HEADER: format_primary,
-                            DURATION_HEADER: duration,
-                            OUTPUT_COLUMNS_BASE[4]: ar_format_name # Use config for 'Aspect Ratio / Format' key
-                        }
+                        for stage_name in stages_to_emit:
+                            base_row_data = {
+                                'Platform': platform_name_found,
+                                FUNNEL_STAGE_HEADER: stage_name,
+                                FORMAT_HEADER: format_primary,
+                                DURATION_HEADER: duration,
+                                OUTPUT_COLUMNS_BASE[4]: ar_format_name # Use config for 'Aspect Ratio / Format' key
+                            }
 
-                        if is_dual_lang and selected_language_names_for_row: # If dual lang and specific languages were ticked for the row
-                            for lang_name in selected_language_names_for_row:
-                                specific_row = base_row_data.copy()
-                                specific_row[OUTPUT_LANGUAGE_COLUMN] = lang_name
-                                transformed_data_all_platforms.append(specific_row)
-                        else: # Single language OR Dual Lang with no specific languages selected for this row (implicit single language for this row)
-                            transformed_data_all_platforms.append(base_row_data) # No language column for single lang or if no langs selected
-                
+                            if is_dual_lang and selected_language_names_for_row: # If dual lang and specific languages were ticked for the row
+                                for lang_name in selected_language_names_for_row:
+                                    specific_row = base_row_data.copy()
+                                    specific_row[OUTPUT_LANGUAGE_COLUMN] = lang_name
+                                    transformed_data_all_platforms.append(specific_row)
+                            else: # Single language OR Dual Lang with no specific languages selected for this row (implicit single language for this row)
+                                transformed_data_all_platforms.append(base_row_data) # No language column for single lang or if no langs selected
+               
             data_row_idx += 1
         # After processing all data rows for the current platform
         logging.info(f"Completed processing platform '{platform_name_found}'. Moving to search from row {data_row_idx + 1}")

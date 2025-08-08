@@ -80,6 +80,10 @@ def run_streamlit_app():
     
     st.info("✅ **v2.2.0 Features**: Improved platform detection using 'Funnel Stage' markers • Support for all 7 platforms (YouTube, META, TikTok, Programmatic, Audio, Gaming, Amazon) • Enhanced dual/single language processing")
 
+    # Banner to indicate ALL→A/C/P expansion behavior when enabled
+    if config.EXPAND_ALL_TO_ACP:
+        st.warning("ALL stage expansion is enabled: rows with Funnel Stage 'ALL' will emit Awareness, Consideration, and Purchase.")
+
     uploaded_file = st.file_uploader("Choose an Excel file", type="xlsx")
     if uploaded_file is not None:
         if st.button("Transform Excel Data"):

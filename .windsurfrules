@@ -1,0 +1,33 @@
+# Implementation Rules
+
+These rules must be followed when implementing any improvements or features:
+
+0. **Documentation Brevity & Clarity:** Keep all documentation updates (`memory-bank/rules.md`, Memory Bank files, `memory-bank/improvement_plan.md`, `memory-bank/identified_issues_and_how_we_fixed_them.md`) **concise and clear**. Focus on conveying essential information effectively to prevent file bloat.
+1. **One Feature Per Session/File:** Implement **one** feature/improvement from `memory-bank/PROJECT_PLAN.md` at a time, within the **currently active version file**.
+2. **Preserve Existing Functionality:** Do not delete/truncate existing code or disrupt functionality.
+3. **Post-Implementation Checks:** After implementing:
+    * **Review:** Check code against requirements (`memory-bank/PROJECT_PLAN.md`).
+    * **Linting:** Check and fix linter errors.
+4. **Testing:** Thoroughly test the implementation.
+5. **Keep track of all errors** Keep track of all errors, issues and obstacles as well as the way we fixed them in a file called `memory-bank/identified_issues_and_how_we_fixed_them.md`.
+6. **Error Handling & Debugging:**
+    * **Check History:** When encountering an error, **first check `memory-bank/identified_issues_and_how_we_fixed_them.md`**.
+        * If it's a **recurring error** documented previously, **review *all* prior fix attempts** listed for that specific error to avoid proposing redundant solutions.
+    * **Sequential Thinking:** If an error is **not fixed on the first attempt** (or persists after trying documented solutions), **MUST use the sequential thinking tool (`mcp_sequentialthinking_sequentialthinking`)** to analyze the problem. Continue using this tool for subsequent attempts until the issue is resolved.
+    * **Issue Tracking:** Document significant obstacles, errors, or failed tests in `memory-bank/identified_issues_and_how_we_fixed_them.md`. **Focus on documenting unique errors or distinct solutions/attempts for recurring issues**, rather than creating duplicate entries for the same persistent problem. The goal is a useful troubleshooting guide.
+7. **Architectural Compliance:** Adhere strictly to the Python architecture and to the best practices for Excel data automation.
+8. **Planning & Progress Tracking:** Detail subtasks in `memory-bank/PROJECT_PLAN.md`. Update its status (⏳, ✅, 🚧) after completing step 6.
+9. **Mandatory Automatic Documentation Updates:** After ANY code change or fix, IMMEDIATELY update ALL relevant documentation without waiting for a reminder:
+    * **Issue Log:** Add the issue and fix to `memory-bank/identified_issues_and_how_we_fixed_them.md`
+    * **Memory Bank:** Update the current status in `memory-bank/activeContext.md`
+    * **Progress:** Record completed work in `memory-bank/progress.md`
+    * **Status:** Update the status in `memory-bank/improvement_plan.md` when a feature is complete
+    This update must be done automatically as part of the code change workflow, not as a separate step requiring a reminder.
+
+10. **Marker Detection Logic for Input Files:**
+    *   **Universal First Pass:** The script *always* first attempts to find `START`/`END` markers to define table regions in *all* input files (both PLANNED and DELIVERED).
+    *   **Marker Priority:** If valid marker-defined regions are found, they are prioritized and used for data extraction due to their explicitness.
+    *   **Fallback to Identifier-Based Detection:** If no valid marker regions are identified (e.g., markers are missing or inconsistently placed), the script falls back to an identifier-based detection method. This secondary method looks for common keywords (e.g., "CAMPAIGN", "PLATFORM", "METRICS/ MARKET") in potential header rows.
+    *   **Relevance:**
+        *   While markers are beneficial for all files, they are more crucial for **PLANNED files**, which historically rely more on them.
+        *   **DELIVERED files** (especially PCA reports) often have strong keyword signals in headers, making the identifier-based fallback very effective for them even if markers are imperfect.

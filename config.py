@@ -6,7 +6,7 @@ from pathlib import Path
 
 # Application constants
 APP_NAME = "Excel Transformer"
-VERSION = "2.3.0"
+VERSION = "2.4.0"
 
 # File handling
 DUAL_LANG_INPUT_SHEET_NAME = 'Tracker (Dual Lang)'
@@ -81,3 +81,12 @@ OUTPUT_COLUMNS_BASE = [
     'Aspect Ratio / Format'
 ]
 OUTPUT_LANGUAGE_COLUMN = 'Languages'
+
+# Funnel and presence settings
+FUNNEL_STAGES = ["Awareness", "Consideration", "Purchase"]
+# Enable expansion of Funnel Stage 'ALL' into A/C/P by default per stakeholder direction
+EXPAND_ALL_TO_ACP = True  # Default ON
+# Presence reporting mode: "off", "qa_only", or "emit_rows"
+PRESENCE_REPORTING_MODE = "qa_only"  # Default to QA coverage summary only (no presence rows emitted)
+PRESENCE_SHEET_NAME_DUAL = "Presence_Dual"
+PRESENCE_SHEET_NAME_SINGLE = "Presence_Single"
