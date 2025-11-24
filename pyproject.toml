@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cej-transformer"
+version = "2.4.0"
+description = "Excel transformation utilities for the CEJ Master Spec Sheet workflows."
+authors = [{ name = "Factory Droid" }]
+readme = { text = "CEJ Transformer package." }
+requires-python = ">=3.8"
+dependencies = [
+    "pandas>=1.0",
+    "openpyxl>=3.0",
+    "streamlit>=1.0",
+    "Pillow>=8.0",
+]
+
+[project.optional-dependencies]
+dev = ["pyinstaller>=5.0"]
+
+[project.scripts]
+cej-transformer = "scripts.excel_transformer:main"
+cej-validate = "scripts.validation_script:main"
+
+[tool.setuptools.packages.find]
+include = ["cej_transformer*", "scripts*"]

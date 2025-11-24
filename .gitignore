@@ -1,0 +1,69 @@
+# Streamlit
+.streamlit/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+dist/
+build/
+site/
+pip-wheel-metadata/
+
+# PyInstaller
+*.spec
+dist/ExcelTransformer/
+build/ExcelTransformer/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Logs
+*.log
+logs/
+transformer.log
+
+# IDE / Editor
+.vscode/
+.idea/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Generated outputs
+transformed_*.xlsx
+transformed_CEJ_master_specsheet_*.xlsx
+transformed_test_*.xlsx
+validation_*.log
+validation_report_*.json
+
+# Excel samples
+samples/
+V2_Haleon CEJ Master Spec Sheet 3.2_Master Template_24112025_Alex.xlsx
+
+# Codex session artifacts
+.codex/
+
+# Binaries
+upx.exe
+
+# Windows alternate data stream artifacts
+*:Zone.Identifier
+
+# Temporary files
+tmp/
+temp/
+
+# Existing patterns
+.aider*
