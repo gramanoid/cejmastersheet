@@ -1,33 +1,38 @@
-# Streamlit
-.streamlit/
-
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-*.so
-*.egg-info/
-.eggs/
+*$py.class
+
+# Distribution / packaging
 dist/
 build/
+.eggs/
+*.egg-info/
+*.spec
+*.exe
 site/
 pip-wheel-metadata/
 
-# PyInstaller
-*.spec
-dist/ExcelTransformer/
-build/ExcelTransformer/
+# Environment variables and secrets
+.env
+.env*.local
 
 # Virtual environments
 .venv/
 venv/
 env/
 
-# Logs
+# Streamlit
+.streamlit/
+.streamlit/secrets.toml
+
+# Logs and temp files
 *.log
 logs/
 transformer.log
+*.tmp
+tmp/
+temp/
 
 # IDE / Editor
 .vscode/
@@ -37,33 +42,36 @@ transformer.log
 # OS files
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Notebooks
 .ipynb_checkpoints/
 
-# Generated outputs
+# Data files (user uploads/outputs)
+*.xlsx
+*.xls
+*.csv
 transformed_*.xlsx
 transformed_CEJ_master_specsheet_*.xlsx
 transformed_test_*.xlsx
 validation_*.log
 validation_report_*.json
-
-# Excel samples
 samples/
 V2_Haleon CEJ Master Spec Sheet 3.2_Master Template_24112025_Alex.xlsx
 
-# Codex session artifacts
+# Project-specific or temporary files
+memory-bank/
+!memory-bank/*.md
+.windsurfrules
 .codex/
+.aider*
+
+# Assets to keep even with broad patterns above
+!header.png
+!config.py
 
 # Binaries
 upx.exe
 
 # Windows alternate data stream artifacts
 *:Zone.Identifier
-
-# Temporary files
-tmp/
-temp/
-
-# Existing patterns
-.aider*
