@@ -56,6 +56,18 @@ PLATFORM_NAMES: Dict[str, str] = {
 FUNNEL_STAGES = ["Awareness", "Consideration", "Purchase"]
 EXPAND_ALL_TO_ACP = True
 
+# Platforms that use format types (Video, Banner, Audio) instead of aspect ratios
+PLATFORMS_WITH_FORMAT_TYPES = {"Programmatic", "Audio", "Gaming", "Amazon"}
+
+# Mapping of format type sub-headers to typical aspect ratios for combined output
+# Used when platform uses "Format" group instead of "Aspect Ratio" group
+FORMAT_TYPE_TO_ASPECT_RATIO: Dict[str, str] = {
+    "Video": "16:9",
+    "Banner": "300x250",
+    "Audio": "N/A",
+    "IMG": "Various",
+}
+
 
 @dataclass(frozen=True)
 class SheetSpecification:

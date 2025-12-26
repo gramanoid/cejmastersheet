@@ -109,6 +109,7 @@ def _transform_section(sheet_df: pd.DataFrame, section: PlatformSection) -> List
         stages_to_emit = _expand_funnel_stage(funnel_stage)
 
         for ar_name, ar_count in aspect_counts:
+            ar_output = _format_aspect_ratio_output(section.platform_name, ar_name)
             for _ in range(ar_count):
                 for stage in stages_to_emit:
                     for language in selected_languages:
@@ -117,7 +118,7 @@ def _transform_section(sheet_df: pd.DataFrame, section: PlatformSection) -> List
                             config.FUNNEL_STAGE_HEADER: stage,
                             config.FORMAT_HEADER: format_value,
                             config.DURATION_HEADER: duration_value,
-                            config.OUTPUT_COLUMNS_BASE[4]: ar_name,
+                            config.OUTPUT_COLUMNS_BASE[4]: ar_output,
                         }
                         if language is not None:
                             record[config.OUTPUT_LANGUAGE_COLUMN] = language
@@ -157,3 +158,17 @@ def _expand_funnel_stage(stage_value: str) -> List[str]:
     if config.EXPAND_ALL_TO_ACP and stage_value.strip().upper() == "ALL":
         return config.FUNNEL_STAGES
     return [stage_value]
+
+
+def _format_aspect_ratio_output(platform_name: str, ar_name: str) -> str:
+    """Format the aspect ratio output, combining format type with aspect ratio for certain platforms.
+
+    For platforms like Programmatic that use format types (Video, Banner) instead of aspect ratios,
+    output "FormatType (AspectRatio)" e.g. "Video (16:9)" or "Banner (300x250)".
+    For other platforms, return the ar_name unchanged.
+    """
+    if platform_name in config.PLATFORMS_WITH_FORMAT_TYPES:
+        aspect_ratio = config.FORMAT_TYPE_TO_ASPECT_RATIO.get(ar_name, "")
+        if aspect_ratio:
+            return f"{ar_name} ({aspect_ratio})"
+    return ar_name
